@@ -1,10 +1,10 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { SaathiError, type Role } from '@saathi/contracts';
-import { aiAvailable, createScamCheck, handleTelegramUpdate, sendTelegramMessage, withTx } from '@saathi/db';
+import { aiConfigured, createScamCheck, handleTelegramUpdate, sendTelegramMessage, withTx } from '@saathi/db';
 import { renderMsg } from '@saathi/i18n';
 import { pool } from '@/server/db';
-import { env } from '@/server/env';
+import { aiConfig, env } from '@/server/env';
 
 function secretOk(given: string | null, expected: string) {
   if (!given) return false;
@@ -33,7 +33,9 @@ export async function POST(req: Request) {
         const m = await client.query('SELECT role FROM memberships WHERE org_id = $1 AND user_id = $2 AND status = $3', [rep.orgId, rep.userId, 'active']);
         if (!m.rows[0]) throw new SaathiError('FORBIDDEN', 'not a member');
         const actor = { userId: rep.userId, orgId: rep.orgId, role: m.rows[0].role as Role, sessionCreatedAt: new Date(), name: '' };
-        return createScamCheck(db, actor, { text: rep.text, inputKind: 'text', externalProcessingConsent: false, channel: 'telegram' }, { fingerprintSecret: e.SCAM_FINGERPRINT_SECRET, aiConfigured: aiAvailable({ apiKey: e.ANTHROPIC_API_KEY, model: e.AI_MODEL }), textRetentionHours: 24 * 30 });
+        // Telegram submissions never grant consent to forward content to the AI provider
+        // (externalProcessingConsent stays false); aiConfigured is reported only for consistency.
+        return createScamCheck(db, actor, { text: rep.text, inputKind: 'text', externalProcessingConsent: false, channel: 'telegram' }, { fingerprintSecret: e.SCAM_FINGERPRINT_SECRET, aiConfigured: aiConfigured(aiConfig()), textRetentionHours: 24 * 30 });
       });
       reply = `Saathi checked this message: ${renderMsg({ key: `status.verdict.${out.verdict}`, params: {} }, { locale: 'en', vocabulary: 'generic', timezone: 'UTC' })}. Open Saathi to see why: ${e.APP_ORIGIN}/app/ask/${out.id}`;
     } catch {
