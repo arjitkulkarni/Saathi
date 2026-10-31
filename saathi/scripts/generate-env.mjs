@@ -62,6 +62,12 @@ const defaults = [
   ['# --- storage'],
   ['OBJECT_STORAGE_DRIVER', 'local'],
   ['OBJECT_STORAGE_LOCAL_DIR', '.local/objects'],
+  ['# --- AI (optional; set a provider key and models to enable explanations/OCR)'],
+  ['AI_PROVIDER', 'xai'],
+  ['XAI_API_KEY', ''],
+  ['ANTHROPIC_API_KEY', ''],
+  ['AI_MODEL', ''],
+  ['AI_VISION_MODEL', ''],
 ];
 
 const lines = [];
