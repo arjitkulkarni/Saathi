@@ -46,28 +46,32 @@ export async function handleTelegramUpdate(pool: pg.Pool, u: TelegramUpdate): Pr
   if (start) {
     const found = await withTx(pool, {}, async (_db, client) => (await client.query('SELECT org_id, link_id FROM saathi_telegram_code_lookup($1)', [sha256(start[1])])).rows[0]);
     if (!found) return { chatId, reply: 'This link code is not valid. Generate a new one in Saathi settings.' };
-    // A chat can only be actively linked to one Saathi account at a time (DB constraint
-    // telegram_links_chat_active_uq). Check first so a chat already linked elsewhere gets a
-    // clear reply instead of a silent failure when the unique index rejects the update below.
-    const already = await withTx(pool, {}, async (_db, client) => (await client.query('SELECT link_id FROM saathi_telegram_chat_lookup($1)', [chatId])).rows[0]);
-    if (already && already.link_id !== found.link_id) return { chatId, reply: 'This Telegram chat is already linked to a different Saathi account. Unlink it there first (Settings → Alerts → Unlink), then try this code again.' };
-    let ok: boolean;
+    const ALREADY_OTHER = 'This Telegram chat is already linked to a different Saathi account. Unlink it there first (Settings → Alerts → Unlink), then try this code again.';
+    let outcome: 'linked' | 'expired' | 'already-this' | 'already-other';
     try {
-      ok = await withTx(pool, { orgId: found.org_id }, async (db) => {
+      outcome = await withTx(pool, { orgId: found.org_id }, async (db, client) => {
         const [l] = await db.select().from(telegramLinks).where(eq(telegramLinks.id, found.link_id)).for('update');
-        if (!l || l.chatId || !l.codeExpiresAt || l.codeExpiresAt.getTime() < Date.now()) return false;
+        if (!l || l.chatId || !l.codeExpiresAt || l.codeExpiresAt.getTime() < Date.now()) return 'expired';
+        // A chat can only be actively linked to one Saathi account at a time (DB constraint
+        // telegram_links_chat_active_uq). This new code's row is a different row than any
+        // existing active link even for the SAME org+user (every "create link code" click
+        // inserts a fresh row) — so compare the org+user behind the active link, not row IDs.
+        const existing = (await client.query('SELECT org_id, user_id FROM saathi_telegram_chat_lookup($1)', [chatId])).rows[0];
+        if (existing) return existing.org_id === l.orgId && existing.user_id === l.userId ? 'already-this' : 'already-other';
         await db.update(telegramLinks).set({ unlinkedAt: new Date() }).where(and(eq(telegramLinks.orgId, l.orgId), eq(telegramLinks.userId, l.userId), isNull(telegramLinks.unlinkedAt), eq(telegramLinks.chatId, chatId)));
         await db.update(telegramLinks).set({ chatId, linkedAt: new Date(), codeHash: null, codeExpiresAt: null }).where(eq(telegramLinks.id, l.id));
         await recordIntent(db, l.orgId, 'telegram.linked', { userId: l.userId });
-        return true;
+        return 'linked';
       });
     } catch (e) {
-      // Race with another chat linking concurrently: the precheck above missed it, so the
+      // Race with another chat linking concurrently: the check above missed it, so the
       // unique index caught it instead. Same friendly reply, not a crash.
-      if ((e as { code?: string }).code === '23505') return { chatId, reply: 'This Telegram chat is already linked to a different Saathi account. Unlink it there first (Settings → Alerts → Unlink), then try this code again.' };
-      throw e;
+      if ((e as { code?: string }).code === '23505') outcome = 'already-other';
+      else throw e;
     }
-    return { chatId, reply: ok ? 'Linked. Saathi will send short alerts here. Open the link in each alert and sign in to review.' : 'This link code has expired or was already used.' };
+    if (outcome === 'already-this') return { chatId, reply: 'This chat is already linked to your Saathi account — nothing more to do.' };
+    if (outcome === 'already-other') return { chatId, reply: ALREADY_OTHER };
+    return { chatId, reply: outcome === 'linked' ? 'Linked. Saathi will send short alerts here. Open the link in each alert and sign in to review.' : 'This link code has expired or was already used.' };
   }
   const link = await withTx(pool, {}, async (_db, client) => (await client.query('SELECT org_id, user_id, link_id FROM saathi_telegram_chat_lookup($1)', [chatId])).rows[0]);
   if (!link) return { chatId, reply: 'This chat is not linked to Saathi. Use the link code from Saathi settings.' };

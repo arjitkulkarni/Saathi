@@ -183,6 +183,19 @@ describe('Telegram linking and staff reporting (Ph12 gate)', () => {
     const r = await handleTelegramUpdate(appPool, upd(base + 1, chatId, `/start ${second.code}`));
     expect(r?.reply).toMatch(/already linked to a different Saathi account/);
   });
+
+  it('treats a second code from the SAME already-linked account as a no-op, not a conflict', async () => {
+    const upd = (id: number, chatId: number, text: string) => ({ update_id: id, message: { message_id: id, chat: { id: chatId, type: 'private' }, text } });
+    const chatId = 779001 + Math.floor(Math.random() * 1000);
+    const base = 920000 + Math.floor(Math.random() * 1000);
+    const first = await tx(F.approver, (db) => createTelegramLinkCode(db, F.approver, 'saathi_test_bot'));
+    expect((await handleTelegramUpdate(appPool, upd(base, chatId, `/start ${first.code}`)))?.reply).toMatch(/^Linked/);
+    // Clicking "Create link code" again (e.g. a stale page) makes a brand-new row for the
+    // same org+user — this must not be mistaken for a different account.
+    const again = await tx(F.approver, (db) => createTelegramLinkCode(db, F.approver, 'saathi_test_bot'));
+    const r = await handleTelegramUpdate(appPool, upd(base + 1, chatId, `/start ${again.code}`));
+    expect(r?.reply).toMatch(/already linked to your Saathi account/);
+  });
 });
 
 describe('scam campaign grouping (Ph06 preset)', () => {
