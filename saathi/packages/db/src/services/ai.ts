@@ -251,3 +251,40 @@ export async function explainScam(cfg: AiConfig, input: { language: string; text
   ].join('\n');
   return dispatchText(cfg, 'scam_explanation', ScamExplanationJsonSchema, ScamExplanationSchema, BOUNDARY, body, 1500);
 }
+
+/** Text extraction from a screenshot the user explicitly chose to send for processing. */
+export async function extractTextFromImage(cfg: AiConfig, image: { data: Buffer; mediaType: 'image/png' | 'image/jpeg' | 'image/webp' }) {
+  if (!aiVisionAvailable(cfg)) return null;
+  const model = visionModel(cfg)!;
+  if (cfg.provider === 'anthropic') {
+    return anthropicParse(
+      cfg,
+      'vision',
+      model,
+      OcrSchema,
+      OCR_SYSTEM,
+      [
+        { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data.toString('base64') } },
+        { type: 'text', text: 'Transcribe the message text in this screenshot.' },
+      ],
+      4000,
+    );
+  }
+  // xAI accepts only PNG/JPEG; unsupported formats must be rejected by the caller, but guard here too.
+  if (!XAI_IMAGE_TYPES.has(image.mediaType)) return null;
+  const dataUrl = `data:${image.mediaType};base64,${image.data.toString('base64')}`;
+  return xaiParse(
+    cfg,
+    'vision',
+    model,
+    'screenshot_text',
+    OcrJsonSchema,
+    OcrSchema,
+    OCR_SYSTEM,
+    [
+      { type: 'image_url', image_url: { url: dataUrl } },
+      { type: 'text', text: 'Transcribe the message text in this screenshot.' },
+    ],
+    4000,
+  );
+}
