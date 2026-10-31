@@ -375,6 +375,12 @@ export const en = {
       remaining: 'This alert still has an open concern. This action alone has not resolved it.',
       result: { requested: 'Your fix has been accepted. The computer has not applied it yet.', queued: 'Waiting for the computer…', executing: 'Applying the fix and checking…', confirmed: 'Change confirmed.', partial: 'Only part of the change worked. More help is needed.', failed: 'Fix failed. The issue still needs attention.', unknown: 'We do not yet know whether the change worked.', expired: 'The request expired before it could be completed. Review the alert again.', cancelled: 'This request was cancelled. It has not fixed the problem.' },
       scanBoundary: 'A scan alone does not prove the harmful software was removed. Check the reported result before calling the problem fixed.',
+      stage: {
+        contact: 'Reaching your device',
+        apply: 'Applying the fix',
+        check: 'Checking that it worked',
+        finish: 'Wrapping up',
+      },
       unresolved_malware: { label: 'Remove the detected threat', benefit: 'Move the detected threat into a blocked area and check the result.', outcome: 'The detected threat is now quarantined. The malware finding is resolved.' },
       protection_disabled: { label: 'Turn protection back on', benefit: 'Turn protection back on and check that it stays on.', outcome: 'Protection is back on. Saathi checked the saved setting and confirmed it is on.' },
       password_guessing: { label: 'Block the repeated sign-in attempts', benefit: 'Block connections from the address behind these sign-in attempts.', outcome: 'The address behind these sign-in attempts is now blocked. The repeated-sign-in finding is restricted — attempts from other addresses would need a separate response.' },

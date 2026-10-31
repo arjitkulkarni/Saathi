@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Dialog } from 'radix-ui';
-import { AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CircleDashed, Loader2 } from 'lucide-react';
 import type { ScenarioOption, ScenarioPrompt } from '@saathi/domain';
 import type { ActionDetailDTO, Msg, Urgency } from '@saathi/contracts';
 import { Button, Card } from '@/components/ui/primitives';
@@ -18,9 +18,53 @@ type DecisionResult = { recorded: boolean; alreadyDecided: boolean; responseKey:
 
 const isRepair = (option: ScenarioOption) => ['device_action', 'device_action_combo', 'simulation_action'].includes(option.kind) && option.availability === 'available';
 
-// Short status words shown in sequence while a fix request is in flight, so the person
-// sees progress rather than a single frozen line (frontend spec: decision modal).
-const SUBMIT_STAGES = ['decisionModal.approving', 'decisionModal.repair.result.queued', 'decisionModal.repair.result.executing'];
+// Four checkpoints shown while a fix request is in flight, so the person sees real progress
+// rather than a single frozen line (frontend spec: decision modal). Each tick is purely a
+// "this is what is happening now" label — it never claims a step passed or failed; only the
+// final result (from the server) ever says the issue is resolved.
+const REPAIR_STAGES = ['decisionModal.repair.stage.contact', 'decisionModal.repair.stage.apply', 'decisionModal.repair.stage.check', 'decisionModal.repair.stage.finish'] as const;
+// ~15s per checkpoint, ~1 minute total — paced like a real device round trip (poll, apply,
+// re-check), not an arbitrary animation. A real device/agent genuinely takes this long; a
+// browser-practice fix (decision.ts repairBrowserPreview) is bounded and instant server-side,
+// so for that one case the reveal of the already-known result is held to this same pace
+// (see withMinDelay below) rather than resolving faster than a real device ever could.
+const REPAIR_STAGE_MS = 15_000;
+
+function RepairStages({ t }: { t: (k: string) => string }) {
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    const timers = REPAIR_STAGES.slice(1).map((_, i) => setTimeout(() => setStage(i + 1), (i + 1) * REPAIR_STAGE_MS));
+    return () => timers.forEach(clearTimeout);
+  }, []);
+  return (
+    <ul className="mt-4 space-y-2" aria-live="polite">
+      {REPAIR_STAGES.map((key, i) => {
+        const done = i < stage;
+        const current = i === stage;
+        return (
+          <li key={key} className="flex items-center gap-2 text-[15px]">
+            {done ? (
+              <CheckCircle2 aria-hidden className="size-4 shrink-0 text-success-ink" />
+            ) : current ? (
+              <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-ink-secondary" />
+            ) : (
+              <CircleDashed aria-hidden className="size-4 shrink-0 text-ink-secondary" />
+            )}
+            <span className={done || current ? 'text-ink' : 'text-ink-secondary'}>{t(key)}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Waits for both the real response and a minimum elapsed time, so a fast server response
+ * is never revealed faster than a real device round trip would be. Never fabricates a
+ * different result — it is the same server response, just not shown before its time. */
+async function withMinDelay<T>(p: Promise<T>, minMs: number): Promise<T> {
+  const [res] = await Promise.all([p, new Promise((resolve) => setTimeout(resolve, minMs))]);
+  return res;
+}
 
 function optionHelpKey(option: ScenarioOption) {
   if (option.availability === 'unavailable') return 'decisionModal.statusUnavailable';
@@ -83,7 +127,12 @@ function DecisionDialog({ activeId, remaining, onClose }: { activeId: string; re
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await apiSend<DecisionResult>(`/api/v1/incidents/${activeId}/decisions`, 'POST', { responseKey, idempotencyKey });
+      const call = apiSend<DecisionResult>(`/api/v1/incidents/${activeId}/decisions`, 'POST', { responseKey, idempotencyKey });
+      // A browser-practice fix (simulation_action) resolves instantly server-side — it is a
+      // bounded simulator, not a real device. Pace its reveal to the same checkpoints a real
+      // device round trip would take, rather than showing "resolved" faster than any real fix
+      // ever could. An error still surfaces immediately — Promise.all rejects without waiting.
+      const res = selected?.kind === 'simulation_action' ? await withMinDelay(call, REPAIR_STAGE_MS * REPAIR_STAGES.length) : await call;
       setResult(res);
     } catch (e) {
       setSubmitError(e instanceof ApiError ? e.message : t('states.errorBody'));
@@ -222,12 +271,6 @@ function OptionDetail({
   const isDevice = isRepair(option);
   const isMonitor = option.kind === 'monitor';
   const guidanceOnly = option.kind === 'manual' || option.kind === 'review' || option.availability === 'unavailable';
-  const [stage, setStage] = useState(0);
-  useEffect(() => {
-    if (!submitting) return;
-    const timers = SUBMIT_STAGES.map((_, i) => setTimeout(() => setStage(i), i * 900));
-    return () => timers.forEach(clearTimeout);
-  }, [submitting]);
   return (
     <div className="mt-4">
       <button type="button" disabled={submitting} onClick={onBack} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-brand-action-hover hover:underline focus-visible:outline-3 focus-visible:outline-focus">
@@ -279,11 +322,7 @@ function OptionDetail({
           </section>
         )}
         {isMonitor && <Notice tone="neutral" className="mt-3">{t('decisionModal.monitoringNote')}</Notice>}
-        {submitting && (
-          <p role="status" aria-live="polite" className="mt-4 text-[15px]">
-            {isDevice ? t(SUBMIT_STAGES[stage]) : t('decisionModal.acknowledging')}
-          </p>
-        )}
+        {submitting && (isDevice ? <RepairStages t={t} /> : <p role="status" aria-live="polite" className="mt-4 text-[15px]">{t('decisionModal.acknowledging')}</p>)}
         {error && (
           <Notice tone="danger" className="mt-3" role="alert">
             {error} <Button size="sm" variant="secondary" className="ml-2" onClick={() => onSubmit(option.key)} disabled={submitting}>{t('decisionModal.retry')}</Button>
