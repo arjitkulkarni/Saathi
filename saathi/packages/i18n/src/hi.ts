@@ -301,6 +301,16 @@ const catalogue: Strings<Messages> = {
     notificationFailures: '{count} चेतावनियाँ नहीं भेजी जा सकीं',
     viewCoverage: 'दायरा देखें',
     viewHealth: 'सुरक्षा स्थिति देखें',
+    metrics: {
+      needsAttention: 'Need a decision',
+      devicesOnline: 'Devices online',
+      protectionChecks: 'Protection checks',
+      sourceStatus: 'Source status',
+      sourceAllConnected: 'All connected',
+      sourceNeedsAttention: 'Needs attention',
+      sourceFailing: 'Delivery failing',
+      sourceNotConnected: 'Not connected',
+    },
   },
   incidents: {
     title: 'घटनाएँ',

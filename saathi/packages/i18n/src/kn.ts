@@ -300,6 +300,16 @@ export const kn = {
     notificationFailures: '{count} ಎಚ್ಚರಿಕೆಗಳನ್ನು ತಲುಪಿಸಲಾಗಲಿಲ್ಲ',
     viewCoverage: 'ವ್ಯಾಪ್ತಿ ನೋಡಿ',
     viewHealth: 'ಆರೋಗ್ಯ ನೋಡಿ',
+    metrics: {
+      needsAttention: 'Need a decision',
+      devicesOnline: 'Devices online',
+      protectionChecks: 'Protection checks',
+      sourceStatus: 'Source status',
+      sourceAllConnected: 'All connected',
+      sourceNeedsAttention: 'Needs attention',
+      sourceFailing: 'Delivery failing',
+      sourceNotConnected: 'Not connected',
+    },
   },
   incidents: {
     title: 'ಘಟನೆಗಳು',

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowRight, HeartPulse, Hourglass, Monitor, Plug } from 'lucide-react';
 import type { OverviewDTO } from '@saathi/contracts';
 import { Card, SectionTitle, buttonVariants } from '@/components/ui/primitives';
+import { MetricsStrip } from '@/components/overview/metrics-strip';
 import { EmptyState, PageHeader } from '@/components/shared/states';
 import { StatusBadge, actionTone } from '@/components/shared/status';
 import { Time } from '@/components/shared/client';
@@ -21,11 +22,9 @@ export function OverviewView({ initial, canAddDevice }: { initial: OverviewDTO; 
   const d = o.funnel.dispositions;
   return (
     <div>
-      <PageHeader
-        title={t('overview.title')}
-        description={t('overview.summaryNeeds', { count: o.needsAttentionTotal })}
-        meta={t('common.lastUpdated', { time: time(o.refreshedAt) })}
-      />
+      <PageHeader title={t('overview.title')} meta={t('common.lastUpdated', { time: time(o.refreshedAt) })} />
+
+      <MetricsStrip o={o} t={t} />
 
       {!c.hasAnySource && (
         <div className="mb-8">

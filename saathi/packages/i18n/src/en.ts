@@ -295,6 +295,16 @@ export const en = {
     notificationFailures: '{count} alerts could not be delivered',
     viewCoverage: 'View coverage',
     viewHealth: 'View health',
+    metrics: {
+      needsAttention: 'Need a decision',
+      devicesOnline: 'Devices online',
+      protectionChecks: 'Protection checks',
+      sourceStatus: 'Source status',
+      sourceAllConnected: 'All connected',
+      sourceNeedsAttention: 'Needs attention',
+      sourceFailing: 'Delivery failing',
+      sourceNotConnected: 'Not connected',
+    },
   },
   incidents: {
     title: 'Incidents',
