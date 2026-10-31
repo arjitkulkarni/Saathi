@@ -15,12 +15,13 @@ import { useI18n } from '@/lib/i18n-client';
 
 type Hist = { id: string; verdict: string; createdAt: string; reported: boolean; inputKind: string };
 
-export function AskForm({ history, aiConfigured }: { history: Hist[]; aiConfigured: boolean }) {
+export function AskForm({ history, aiConfigured, aiVisionConfigured }: { history: Hist[]; aiConfigured: boolean; aiVisionConfigured: boolean }) {
   const { t } = useI18n();
   const router = useRouter();
   const ids = { text: useId(), file: useId(), err: useId() };
   const [text, setText] = useState('');
   const [consent, setConsent] = useState(false);
+  const [ocrConsent, setOcrConsent] = useState(false);
   const [attachmentRef, setAttachmentRef] = useState<string | null>(null);
   const [extractNote, setExtractNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +34,8 @@ export function AskForm({ history, aiConfigured }: { history: Hist[]; aiConfigur
     setExtractNote(null);
     const fd = new FormData();
     fd.set('file', file);
-    fd.set('consent', String(consent && aiConfigured));
+    // The screenshot leaves this server only when OCR consent is given and vision is configured.
+    fd.set('consent', String(ocrConsent && aiVisionConfigured));
     try {
       const res = await fetch('/api/v1/scam-checks/extract', { method: 'POST', body: fd });
       const body = await res.json();
@@ -42,8 +44,19 @@ export function AskForm({ history, aiConfigured }: { history: Hist[]; aiConfigur
       if (body.data.text) {
         // Extracted text is shown for review and redaction before anything is assessed.
         setText(body.data.text);
-        setExtractNote(body.data.legible === false ? t('ask.extractNote') : t('ask.extractNote'));
-      } else setExtractNote(t('ask.extractUnavailable'));
+        setExtractNote(body.data.legible === false ? t('ask.extractPartial') : t('ask.extractReview'));
+      } else {
+        const extraction: string = body.data.extraction;
+        setExtractNote(
+          extraction === 'unsupported_format'
+            ? t('ask.extractUnsupported')
+            : extraction === 'failed'
+              ? t('ask.extractFailed')
+              : extraction === 'not_requested'
+                ? t('ask.ocrNotRequested')
+                : t('ask.extractUnavailable'),
+        );
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('states.errorBody'));
     } finally {
@@ -84,6 +97,13 @@ export function AskForm({ history, aiConfigured }: { history: Hist[]; aiConfigur
               <ImageUp aria-hidden className="size-5 text-ink-secondary" />
               {t('ask.screenshot')}
             </Label>
+            <label className="mt-2 flex items-start gap-3 text-[15px]">
+              <input type="checkbox" className="mt-1 size-4" checked={ocrConsent} disabled={!aiVisionConfigured} onChange={(e) => setOcrConsent(e.target.checked)} />
+              <span>
+                {t('ask.ocrConsent')}
+                {!aiVisionConfigured && <span className="block text-[14px] text-ink-secondary">{t('ask.ocrUnavailable')}</span>}
+              </span>
+            </label>
             <input id={ids.file} type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => onFile(e.target.files?.[0])} className="mt-2 block min-h-11 text-[15px] file:mr-3 file:min-h-11 file:rounded-[10px] file:border file:border-border-control file:bg-surface file:px-3 file:text-[15px]" />
             <Hint>{t('ask.extractNote')}</Hint>
             {extractNote && <Notice tone="info" className="mt-2">{extractNote}</Notice>}
