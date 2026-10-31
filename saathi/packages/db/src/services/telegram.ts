@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import type pg from 'pg';
 import { SaathiError } from '@saathi/contracts';
 import { withTx, type Db } from '../client';
@@ -16,6 +16,11 @@ export async function createTelegramLinkCode(db: Db, actor: Actor, botUsername: 
   await requireMembership(db, actor, 'telegram.link');
   const code = randomBytes(6).toString('base64url').replace(/[^A-Za-z0-9]/g, 'x');
   const expiresAt = new Date(Date.now() + LINK_CODE_TTL_MINUTES * 60 * 1000);
+  // Retire any earlier codes that were never used (chatId still null) so at most one
+  // pending code exists per org+user at a time — repeated "Create link code" clicks used
+  // to pile up rows that all satisfy `unlinkedAt IS NULL`, making single-row lookups like
+  // telegramStatus() unreliable about which row is the real (or most recent) one.
+  await db.update(telegramLinks).set({ unlinkedAt: new Date() }).where(and(eq(telegramLinks.orgId, actor.orgId), eq(telegramLinks.userId, actor.userId), isNull(telegramLinks.unlinkedAt), isNull(telegramLinks.chatId)));
   await db.insert(telegramLinks).values({ orgId: actor.orgId, userId: actor.userId, codeHash: sha256(code), codeExpiresAt: expiresAt });
   return { code, expiresAt: expiresAt.toISOString(), deepLink: botUsername ? `https://t.me/${botUsername}?start=${code}` : null };
 }
@@ -27,7 +32,7 @@ export async function unlinkTelegram(db: Db, actor: Actor) {
 }
 
 export async function telegramStatus(db: Db, actor: Actor) {
-  const [l] = await db.select().from(telegramLinks).where(and(eq(telegramLinks.orgId, actor.orgId), eq(telegramLinks.userId, actor.userId), isNull(telegramLinks.unlinkedAt)));
+  const [l] = await db.select().from(telegramLinks).where(and(eq(telegramLinks.orgId, actor.orgId), eq(telegramLinks.userId, actor.userId), isNull(telegramLinks.unlinkedAt), isNotNull(telegramLinks.chatId)));
   return { linked: !!l?.chatId, linkedAt: l?.linkedAt?.toISOString() ?? null };
 }
 

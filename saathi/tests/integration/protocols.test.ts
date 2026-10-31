@@ -7,7 +7,7 @@ import { createEnrollmentCode, enrollDevice, ingestEvents, pollCommands, recordC
 import { buildBatch, submitBatch } from '../../packages/db/src/services/anchor';
 import { createCheckpoint, signPendingIntents } from '../../packages/db/src/services/evidence';
 import { createScamCheck, reportScamCheck } from '../../packages/db/src/services/scam';
-import { createTelegramLinkCode, handleTelegramUpdate } from '../../packages/db/src/services/telegram';
+import { createTelegramLinkCode, handleTelegramUpdate, telegramStatus } from '../../packages/db/src/services/telegram';
 import { createWorker } from '../../apps/worker/src/index';
 import { appPool, fixtures, idem, ownerClient, tx } from './helpers';
 
@@ -182,6 +182,19 @@ describe('Telegram linking and staff reporting (Ph12 gate)', () => {
     const second = await tx(F.northOwner, (db) => createTelegramLinkCode(db, F.northOwner, 'saathi_test_bot'));
     const r = await handleTelegramUpdate(appPool, upd(base + 1, chatId, `/start ${second.code}`));
     expect(r?.reply).toMatch(/already linked to a different Saathi account/);
+  });
+
+  it('reports linked status correctly even with an unused pending code sitting alongside the active link', async () => {
+    const upd = (id: number, chatId: number, text: string) => ({ update_id: id, message: { message_id: id, chat: { id: chatId, type: 'private' }, text } });
+    const chatId = 780001 + Math.floor(Math.random() * 1000);
+    const base = 930000 + Math.floor(Math.random() * 1000);
+    const linked = await tx(F.owner, (db) => createTelegramLinkCode(db, F.owner, 'saathi_test_bot'));
+    expect((await handleTelegramUpdate(appPool, upd(base, chatId, `/start ${linked.code}`)))?.reply).toMatch(/^Linked/);
+    // Generate another code without using it — this used to leave a second, unconsumed
+    // unlinkedAt-null row that a single-row status lookup could pick instead of the active one.
+    await tx(F.owner, (db) => createTelegramLinkCode(db, F.owner, 'saathi_test_bot'));
+    const status = await tx(F.owner, (db) => telegramStatus(db, F.owner));
+    expect(status.linked).toBe(true);
   });
 
   it('treats a second code from the SAME already-linked account as a no-op, not a conflict', async () => {
