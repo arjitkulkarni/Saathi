@@ -182,13 +182,17 @@ export function buildHandlers(d: WorkerDeps): Record<string, Handler> {
       if (!row || row.aiStatus !== 'pending' || !row.externalProcessingConsent || !row.reviewedText) return;
       const f = row.findings as { reasons: { key: string; params: Record<string, string> }[]; uncertainty: { key: string; params: Record<string, string> }[] };
       const out = aiAvailable(cfg)
-        ? await explainScam(cfg, {
-            language: ro.locale === 'kn' ? 'Kannada' : ro.locale === 'hi' ? 'Hindi' : 'English',
-            text: row.reviewedText,
-            verdictLabel: renderMsg({ key: `status.verdict.${row.verdict}`, params: {} }, ro),
-            reasons: f.reasons.map((m) => renderMsg(m, ro)),
-            uncertainty: f.uncertainty.map((m) => renderMsg(m, ro)),
-          })
+        ? await explainScam(
+            cfg,
+            {
+              language: ro.locale === 'kn' ? 'Kannada' : ro.locale === 'hi' ? 'Hindi' : 'English',
+              text: row.reviewedText,
+              verdictLabel: renderMsg({ key: `status.verdict.${row.verdict}`, params: {} }, ro),
+              reasons: f.reasons.map((m) => renderMsg(m, ro)),
+              uncertainty: f.uncertainty.map((m) => renderMsg(m, ro)),
+            },
+            (rec) => void tx(orgId, (db) => db.insert(s.aiCallLog).values({ orgId, ...rec })).catch(() => {}),
+          )
         : null;
       await tx(orgId, (db) => db.update(s.scamChecks).set({ aiStatus: out ? 'used' : aiAvailable(cfg) ? 'failed' : 'unavailable', aiExplanation: out?.explanation ?? null }).where(eq(s.scamChecks.id, row.id)));
     },
