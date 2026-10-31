@@ -16,3 +16,16 @@ function raw(res: unknown) {
 function status(code: number) {
   return { ok: code < 400, status: code, json: async () => ({ error: 'x' }) };
 }
+
+let fetchMock: ReturnType<typeof vi.fn>;
+beforeEach(() => {
+  __resetAiState();
+  fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+const scamInput = { language: 'English', text: 'win a prize click here', verdictLabel: 'Suspicious', reasons: ['urgent money request'], uncertainty: ['sender unknown'] };
