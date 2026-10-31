@@ -211,3 +211,10 @@ async function anthropicParse<T extends z.ZodType>(
     return null;
   }
 }
+
+function dispatchText<T extends z.ZodType>(cfg: AiConfig, schemaName: string, jsonSchema: unknown, schema: T, system: string, body: string, maxTokens: number): Promise<z.infer<T> | null> {
+  const model = textModel(cfg)!;
+  return cfg.provider === 'anthropic'
+    ? anthropicParse(cfg, 'text', model, schema, system, body, maxTokens)
+    : xaiParse(cfg, 'text', model, schemaName, jsonSchema, schema, system, body, maxTokens);
+}
