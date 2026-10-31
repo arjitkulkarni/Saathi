@@ -5,6 +5,7 @@ export * from './services/snapshot';
 export * from './services/gateway';
 export * from './services/incidents';
 export * from './services/decisions';
+export * from './services/scenario-decisions';
 export * from './services/storage';
 export * from './services/evidence';
 export * from './services/anchor';

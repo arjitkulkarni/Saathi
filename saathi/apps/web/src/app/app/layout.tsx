@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { can } from '@saathi/domain';
 import { coverageSummary } from '@saathi/db';
 import { AppShell, type NavKey } from '@/components/shell/app-shell';
+import { IncidentDecisionModal } from '@/components/incidents/decision-modal';
 import { I18nProvider } from '@/lib/i18n-client';
 import { actorTx, getActorContext } from '@/server/actor';
 import { requestLocale } from '@/server/i18n';
@@ -35,6 +36,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <AppShell actor={dto} visible={visible} coverage={coverage}>
           {children}
         </AppShell>
+        {can(role, 'incidents.preview') && <IncidentDecisionModal />}
       </div>
     </I18nProvider>
   );

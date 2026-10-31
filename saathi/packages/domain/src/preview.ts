@@ -422,10 +422,18 @@ export function recommendOptions(s: Snapshot, findings: Finding[], at: string): 
       };
       const facts = Object.fromEntries(f.facts.flatMap((m) => Object.entries(m.params)));
       switch (f.ruleId) {
-        case 'password_guessing':
+        case 'password_guessing': {
           if (typeof facts.sourceAddress === 'string' && facts.sourceAddress) add('device.block_source_ip', { address: facts.sourceAddress, direction: 'inbound' }, 'option.reason.block_source_ip');
           add('device.set_lockout_policy', { threshold: 5, durationMinutes: 15 }, 'option.reason.set_lockout_policy');
+          // Only when the targeted accounts resolve to exactly one known, unprotected local
+          // account — never guess a target among several candidates.
+          const names = typeof facts.accounts === 'string' ? facts.accounts.split(',').map((x) => x.trim()).filter(Boolean) : [];
+          if (names.length === 1) {
+            const match = d.accounts.find((a) => a.username === names[0]);
+            if (match && !protectedAccountReason(d, match.sid)) add('device.disable_local_account', { sid: match.sid }, 'option.reason.disable_local_account');
+          }
           break;
+        }
         case 'possible_compromise':
           if (typeof facts.sid === 'string' && facts.sid && !protectedAccountReason(d, facts.sid)) add('device.disable_local_account', { sid: facts.sid }, 'option.reason.disable_local_account');
           add('device.lock_session', {}, 'option.reason.lock_session');

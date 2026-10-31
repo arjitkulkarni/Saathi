@@ -525,6 +525,14 @@ export const incidents = pgTable(
     openedAt: ts('opened_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
     version: integer('version').notNull().default(1),
+    // Scenario decision popup (build.md Ph07/08 reuse). `version` bumps on every reassessment
+    // pass (not just new evidence), so reopening compares the set of open finding IDs instead:
+    // the prompt reopens only when a finding exists that was not open at decision time.
+    decidedAt: ts('decided_at'),
+    decidedVersion: integer('decided_version'),
+    decidedFindingIds: jsonb('decided_finding_ids').$type<string[]>(),
+    decidedResponse: text('decided_response'),
+    decidedByUserId: text('decided_by_user_id'),
   },
   (t) => [index('incidents_org_state_idx').on(t.orgId, t.state, t.updatedAt), index('incidents_org_corr_idx').on(t.orgId, t.family, t.correlationKey)],
 );

@@ -6,3 +6,4 @@ export * from './health';
 export * from './roles';
 export * from './scam';
 export * from './recovery';
+export * from './scenarios';
