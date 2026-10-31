@@ -103,10 +103,15 @@ describe('transient failures, retries and circuit breaker', () => {
     expect(await explainScam(xai(), scamInput)).toEqual({ explanation: 'ok' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
-  it('retries once on a network error and then gives up', async () => {
+  it('retries on a network error up to the hardcap and then gives up', async () => {
     fetchMock.mockRejectedValue(new Error('network'));
     expect(await explainScam(xai(), scamInput)).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+  it('never exceeds the 3-attempt hardcap even under sustained 429s', async () => {
+    fetchMock.mockResolvedValue(status(429));
+    expect(await explainScam(xai(), scamInput)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
   it('does not retry on a 4xx (e.g. unsupported model) and records a failure', async () => {
     fetchMock.mockResolvedValueOnce(status(400));
