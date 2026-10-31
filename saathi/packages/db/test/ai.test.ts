@@ -125,3 +125,29 @@ describe('transient failures, retries and circuit breaker', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('xAI screenshot extraction (vision)', () => {
+  const png = { data: Buffer.from('fakepng'), mediaType: 'image/png' as const };
+  it('sends the image as a base64 data URL to the vision model and returns the OCR result', async () => {
+    fetchMock.mockResolvedValueOnce(chatJson({ text: 'Your account is locked', legible: true }));
+    const out = await extractTextFromImage(xai(), png);
+    expect(out).toEqual({ text: 'Your account is locked', legible: true });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.model).toBe('grok-vision');
+    const parts = body.messages[1].content;
+    expect(parts[0]).toMatchObject({ type: 'image_url' });
+    expect(parts[0].image_url.url).toMatch(/^data:image\/png;base64,/);
+  });
+  it('does not transmit an unsupported WebP image to xAI', async () => {
+    const cfg = xai();
+    expect(aiVisionSupportsFormat(cfg, 'image/webp')).toBe(false);
+    expect(await extractTextFromImage(cfg, { data: Buffer.from('x'), mediaType: 'image/webp' })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('makes no request when vision is not configured', async () => {
+    const cfg = aiConfigFromEnv({ AI_PROVIDER: 'xai', XAI_API_KEY: 'k', AI_MODEL: 'm' }, 1000); // no vision model
+    expect(aiVisionAvailable(cfg)).toBe(false);
+    expect(await extractTextFromImage(cfg, png)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
