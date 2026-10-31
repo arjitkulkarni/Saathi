@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
-import { parseEnv, WorkerEnv } from '@saathi/contracts/env';
-import { closePools, enqueue, getPool, storeFromEnv, withTx, type AnchorConfig } from '@saathi/db';
+import { aiConfigFromEnv, parseEnv, WorkerEnv } from '@saathi/contracts/env';
+import { aiConfigured, aiVisionConfigured, closePools, enqueue, getPool, storeFromEnv, withTx, type AnchorConfig } from '@saathi/db';
 import type { FetchLike } from '@saathi/evidence';
 import { keyPairFromSeed } from '@saathi/evidence';
 import { buildHandlers, type WorkerDeps } from './handlers';
@@ -59,7 +59,8 @@ export async function scheduleTick(deps: WorkerDeps, now = new Date()) {
 
 async function main() {
   const { runtime, deps, log } = createWorker();
-  log('info', 'worker starting', { anchorBackend: deps.anchor.backend, verifier: deps.anchor.verifier, storage: deps.store.label, telegram: !!deps.env.TELEGRAM_BOT_TOKEN, ai: !!(deps.env.ANTHROPIC_API_KEY && deps.env.AI_MODEL) });
+  const ai = aiConfigFromEnv(deps.env);
+  log('info', 'worker starting', { anchorBackend: deps.anchor.backend, verifier: deps.anchor.verifier, storage: deps.store.label, telegram: !!deps.env.TELEGRAM_BOT_TOKEN, aiProvider: ai.provider, aiText: aiConfigured(ai), aiVision: aiVisionConfigured(ai) });
   runtime.start(1000);
   const tick = () => scheduleTick(deps).catch((e) => log('warn', 'scheduler tick failed', { error: (e as Error).message }));
   await tick();
