@@ -1244,9 +1244,10 @@ export const kn = {
   },
   components: { firewall: 'ಫೈರ್‌ವಾಲ್', av: 'ಆಂಟಿವೈರಸ್', protection: 'ರಕ್ಷಣೆ' },
   notify: {
-    app_needs_review: 'Saathi: ಒಂದು ಅಪ್ಲಿಕೇಶನ್‌ಗೆ ಪರಿಶೀಲನೆ ಬೇಕು.',
+    app_needs_review: 'Saathi: ಅಸಾಮಾನ್ಯವಾಗಿ ವೇಗದ ರೆಕಾರ್ಡ್ ಡೌನ್‌ಲೋಡ್‌ಗಳಿಗೆ ಪರಿಶೀಲನೆ ಬೇಕು.',
     device_needs_review: 'Saathi: ಕಚೇರಿಯ ಒಂದು ಸಾಧನಕ್ಕೆ ಪರಿಶೀಲನೆ ಬೇಕು.',
-    messages_need_review: 'Saathi: ವರದಿಯಾದ ಸಂದೇಶಗಳಿಗೆ ಪರಿಶೀಲನೆ ಬೇಕು.',
+    device_needs_review_named: 'Saathi: {device} ಗೆ ಪರಿಶೀಲನೆ ಬೇಕು.',
+    messages_need_review: 'Saathi: ವರದಿಯಾದ ಒಂದು ಸಂದೇಶಕ್ಕೆ ಪರಿಶೀಲನೆ ಬೇಕು.',
     limit_expiring: 'Saathi: ಒಂದು ತಾತ್ಕಾಲಿಕ ಮಿತಿ ಶೀಘ್ರದಲ್ಲೇ ಮುಗಿಯುತ್ತದೆ.',
     limit_expired: 'Saathi: ಒಂದು ತಾತ್ಕಾಲಿಕ ಮಿತಿ ಮುಗಿದಿದೆ. ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ.',
     campaign_warning: 'Saathi: ಹರಿದಾಡುತ್ತಿರುವ ಒಂದು ಸಂದೇಶದ ಬಗ್ಗೆ ಎಚ್ಚರವಿರಲಿ. ಅದರ ಲಿಂಕ್‌ಗಳನ್ನು ಕ್ಲಿಕ್ ಮಾಡಬೇಡಿ; ನಿಮ್ಮ ವ್ಯವಸ್ಥಾಪಕರೊಂದಿಗೆ ವಿಚಾರಿಸಿ.',

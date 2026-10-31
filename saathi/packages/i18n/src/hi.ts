@@ -1245,9 +1245,10 @@ const catalogue: Strings<Messages> = {
   },
   components: { firewall: 'फ़ायरवॉल', av: 'एंटीवायरस', protection: 'सुरक्षा' },
   notify: {
-    app_needs_review: 'Saathi: एक ऐप को देखने की ज़रूरत है।',
+    app_needs_review: 'Saathi: असामान्य रूप से तेज़ रिकॉर्ड डाउनलोड की समीक्षा ज़रूरी है।',
     device_needs_review: 'Saathi: ऑफ़िस के एक डिवाइस को देखने की ज़रूरत है।',
-    messages_need_review: 'Saathi: बताए गए संदेशों को देखने की ज़रूरत है।',
+    device_needs_review_named: 'Saathi: {device} को देखने की ज़रूरत है।',
+    messages_need_review: 'Saathi: बताए गए एक संदेश को देखने की ज़रूरत है।',
     limit_expiring: 'Saathi: एक अस्थायी सीमा जल्द ख़त्म होगी।',
     limit_expired: 'Saathi: एक अस्थायी सीमा ख़त्म हो गई है। कृपया देखें।',
     campaign_warning: 'Saathi: इधर-उधर भेजे जा रहे एक संदेश से सावधान रहें। उसके लिंक पर क्लिक न करें; अपने मैनेजर से पूछें।',

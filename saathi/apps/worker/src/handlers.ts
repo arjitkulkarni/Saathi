@@ -266,8 +266,9 @@ export function buildHandlers(d: WorkerDeps): Record<string, Handler> {
     'notify.device_stale': async (job) => {
       const orgId = need(job.orgId);
       await tx(orgId, async (db) => {
-        const { createNotifications } = await import('@saathi/db');
-        await createNotifications(db, orgId, { kind: 'device_stale', incidentId: null, text: msg('notify.device_needs_review'), dedupe: `device_stale:${job.payload.deviceId}:${job.id}` });
+        const { createNotifications, deviceNotifyText } = await import('@saathi/db');
+        const text = await deviceNotifyText(db, String(job.payload.deviceId));
+        await createNotifications(db, orgId, { kind: 'device_stale', incidentId: null, text, dedupe: `device_stale:${job.payload.deviceId}:${job.id}` });
       });
     },
   };

@@ -173,6 +173,17 @@ export async function createNotifications(db: Db, orgId: string, n: { kind: stri
 export async function notifyIncident(db: Db, orgId: string, incidentId: string) {
   const [inc] = await db.select().from(incidents).where(and(eq(incidents.orgId, orgId), eq(incidents.id, incidentId)));
   if (!inc || inc.state === 'dismissed') return;
-  const key = inc.family === 'records_access' ? 'notify.app_needs_review' : inc.family === 'scam_campaign' ? 'notify.messages_need_review' : 'notify.device_needs_review';
-  await createNotifications(db, orgId, { kind: 'incident', incidentId, text: msg(key), dedupe: `incident:${incidentId}:${inc.version}` });
+  const text =
+    inc.family === 'records_access'
+      ? msg('notify.app_needs_review')
+      : inc.family === 'scam_campaign'
+        ? msg('notify.messages_need_review')
+        : await deviceNotifyText(db, inc.subjectDeviceId);
+  await createNotifications(db, orgId, { kind: 'incident', incidentId, text, dedupe: `incident:${incidentId}:${inc.version}` });
+}
+
+/** Names the subject device in the alert when known; falls back to the generic text otherwise. */
+export async function deviceNotifyText(db: Db, deviceId: string | null) {
+  const [d] = deviceId ? await db.select({ name: devices.name }).from(devices).where(eq(devices.id, deviceId)) : [];
+  return d ? msg('notify.device_needs_review_named', { device: d.name }) : msg('notify.device_needs_review');
 }
