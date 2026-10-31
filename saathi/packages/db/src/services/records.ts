@@ -1,11 +1,12 @@
-import { and, asc, desc, eq, inArray, lte, sql } from 'drizzle-orm';
-import { msg, SaathiError, type AnchorState, type CheckpointDTO, type Msg, type ReportDTO } from '@saathi/contracts';
+import { and, asc, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
+import { msg, SaathiError, type AnchorState, type CheckpointDTO, type CheckpointGraphDTO, type Msg, type ReportDTO } from '@saathi/contracts';
 import { BUNDLE_FORMAT, bytesToB64, EVIDENCE_SCHEMA_VERSION, RETAINED_FORMAT, type EvidenceBundle, type RetainedCheckpoint } from '@saathi/evidence';
 import type { Db } from '../client';
 import { actionProbes, actions, anchorBatches, anchorMembers, anchorProofs, checkpoints, evidenceChainHeads, evidenceEntries, evidenceIntents, incidentFindings, incidents, recoveryCases, reportAccessLog, reports } from '../schema';
 import { enqueue, recordIntent, requireMembership, type Actor } from './core';
 import { anchorStatusForCheckpoint } from './anchor';
 import { checkpointFromRow, orgRef, requestAnchor } from './evidence';
+import { summarizeEntry } from './evidence-summary';
 
 // ------------------------------------------------------------------ evidence views
 
@@ -50,6 +51,34 @@ export async function getCheckpoint(db: Db, actor: Actor, id: string) {
     anchor: { ...anchor, commitmentHex: m?.commitmentHex ?? null, path: m?.path ?? null, rootHex: batch?.rootHex ?? null, merkleVersion: batch?.merkleVersion ?? null },
     canRequestAnchor: role === 'owner' && anchor.state === 'not_requested',
     canExport: role === 'owner' || role === 'auditor',
+  };
+}
+
+/**
+ * Chain, for people rather than tools: each signed entry up to this checkpoint as a node
+ * with a plain-language gloss, never the raw payload, hash, or signature.
+ */
+export async function getCheckpointGraph(db: Db, actor: Actor, id: string): Promise<CheckpointGraphDTO> {
+  await requireMembership(db, actor, 'evidence.read');
+  const [r] = await db.select().from(checkpoints).where(and(eq(checkpoints.orgId, actor.orgId), eq(checkpoints.id, id)));
+  if (!r) throw new SaathiError('NOT_FOUND', 'Checkpoint not found.');
+  const [prior] = await db
+    .select({ seq: checkpoints.seq })
+    .from(checkpoints)
+    .where(and(eq(checkpoints.orgId, actor.orgId), lte(checkpoints.seq, r.seq), sql`${checkpoints.seq} <> ${r.seq}`))
+    .orderBy(desc(checkpoints.seq))
+    .limit(1);
+  const from = prior ? Number(prior.seq) + 1 : 1;
+  const rows = await db
+    .select({ seq: evidenceEntries.seq, type: evidenceEntries.type, occurredAt: evidenceEntries.occurredAt, payload: evidenceEntries.payload })
+    .from(evidenceEntries)
+    .where(and(eq(evidenceEntries.orgId, actor.orgId), gt(evidenceEntries.seq, from - 1), lte(evidenceEntries.seq, r.seq)))
+    .orderBy(asc(evidenceEntries.seq))
+    .limit(500);
+  const anchor = await anchorStatusForCheckpoint(db, r.id, r.isSample);
+  return {
+    checkpoint: { id: r.id, seq: Number(r.seq), createdAt: r.createdAt, anchor },
+    entries: rows.map((e) => ({ id: `${actor.orgId}:${e.seq}`, seq: Number(e.seq), occurredAt: e.occurredAt, summary: summarizeEntry(e.type, e.payload) })),
   };
 }
 
