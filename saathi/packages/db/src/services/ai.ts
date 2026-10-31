@@ -288,3 +288,9 @@ export async function extractTextFromImage(cfg: AiConfig, image: { data: Buffer;
     4000,
   );
 }
+
+/** Formats the xAI vision endpoint can read directly; others need a pasted-text fallback. */
+export function aiVisionSupportsFormat(cfg: AiConfig, mediaType: string) {
+  if (cfg.provider === 'anthropic') return mediaType === 'image/png' || mediaType === 'image/jpeg' || mediaType === 'image/webp';
+  return XAI_IMAGE_TYPES.has(mediaType);
+}
