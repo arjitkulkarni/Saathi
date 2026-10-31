@@ -1,12 +1,20 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { msg, SaathiError, type Finding, type Msg, type Urgency } from '@saathi/contracts';
-import { buildScenarioPrompt, decisionNeedsReopen, recommendOptions, type ScenarioDeviceActionSpec, type ScenarioPrompt } from '@saathi/domain';
+import { buildScenarioPrompt, decisionNeedsReopen, recommendOptions, withBrowserPreviewRepair, type ScenarioDeviceActionSpec, type ScenarioPrompt } from '@saathi/domain';
 import type { Db } from '../client';
 import { incidentFindings, incidentHistory, incidents } from '../schema';
 import { recordIntent, requireMembership, type Actor } from './core';
 import { approvePreview, createPreview } from './decisions';
 import { findingFromRow } from './incidents';
 import { loadSnapshot } from './snapshot';
+import { browserPreviewDevice, repairBrowserPreview, type SimulationRepairResult } from './preview-repairs';
+
+async function availablePrompt(db: Db, orgId: string, findings: Finding[], now: Date) {
+  const snapshot = await loadSnapshot(db, orgId, now);
+  const { options } = recommendOptions(snapshot, findings, now.toISOString());
+  const prompt = buildScenarioPrompt(representativeRuleId(findings), options);
+  return await browserPreviewDevice(db, orgId, findings) ? withBrowserPreviewRepair(prompt) : prompt;
+}
 
 const ACTIONABLE_STATES = ['open', 'investigating'];
 const URGENCY_RANK: Record<Urgency, number> = { needs_attention: 3, review_today: 2, weekly: 1 };
@@ -43,7 +51,15 @@ export async function listIncidentsNeedingDecision(db: Db, actor: Actor, now = n
   for (const r of rows) {
     const open = findingsByIncident.filter((f) => f.incidentId === r.id && f.status === 'open').map((f) => f.id);
     if (open.length === 0) continue; // nothing open to decide on (already resolved/restricted)
-    if (!decisionNeedsReopen(open, (r.decidedFindingIds as string[] | null) ?? null)) continue;
+    if (!decisionNeedsReopen(open, (r.decidedFindingIds as string[] | null) ?? null)) {
+      // Older browser previews could only save a promise to get help. Offer the
+      // newly supported fix for those still-open practice issues, once. Respect
+      // an explicit monitoring choice and never treat it as approval to repair.
+      if (!['review', 'disconnect'].includes(r.decidedResponse ?? '')) continue;
+      const current = findingsByIncident.filter(f => f.incidentId === r.id && f.status === 'open').map(findingFromRow);
+      const prompt = await availablePrompt(db, actor.orgId, current, now);
+      if (!prompt.options.some(o => o.kind === 'simulation_action')) continue;
+    }
     out.push({ id: r.id, title: r.title as Msg, urgency: r.urgency as Urgency, openedAt: r.openedAt.toISOString() });
   }
   return out.sort((a, b) => URGENCY_RANK[b.urgency] - URGENCY_RANK[a.urgency] || new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime());
@@ -59,8 +75,6 @@ export async function getScenarioPrompt(
   const [inc] = await db.select().from(incidents).where(and(eq(incidents.orgId, actor.orgId), eq(incidents.id, incidentId)));
   if (!inc) throw new SaathiError('NOT_FOUND', 'Incident not found.');
   const findings = await openFindings(db, incidentId);
-  const snapshot = await loadSnapshot(db, actor.orgId, now);
-  const { options } = recommendOptions(snapshot, findings, now.toISOString());
   const scope = inc.scope as { sources?: Msg[] } | null;
   // Keep the SIMULATION/REPLAY label visible on the decision modal too, not just elsewhere.
   const simulated = (scope?.sources ?? []).some((s) => s.key === 'scope.device_simulated') || inc.isReplay;
@@ -72,12 +86,12 @@ export async function getScenarioPrompt(
     facts: inc.facts as Msg[],
     uncertain: inc.uncertain as Msg[],
     simulated,
-    prompt: buildScenarioPrompt(representativeRuleId(findings), options),
+    prompt: await availablePrompt(db, actor.orgId, findings, now),
   };
 }
 
 export type DecisionActionResult = { specIndex: number; actionType: string; actionId: string | null; duplicate: boolean; error: string | null };
-export type DecisionResultDTO = { recorded: boolean; alreadyDecided: boolean; responseKey: string; actionResults: DecisionActionResult[] };
+export type DecisionResultDTO = { recorded: boolean; alreadyDecided: boolean; responseKey: string; actionResults: DecisionActionResult[]; simulationResult?: SimulationRepairResult };
 
 /**
  * Record a deliberate response to an actionable incident. Only the responseKey is trusted
@@ -93,21 +107,24 @@ export async function recordScenarioDecision(db: Db, actor: Actor, incidentId: s
 
   const findings = await openFindings(db, incidentId);
   const openIds = findings.map((f) => f.id);
-  if (!decisionNeedsReopen(openIds, (inc.decidedFindingIds as string[] | null) ?? null)) {
+  const alreadyDecided = !decisionNeedsReopen(openIds, (inc.decidedFindingIds as string[] | null) ?? null);
+  const upgradeToRepair = alreadyDecided && openIds.length > 0 && ['review', 'disconnect', 'monitor', 'defer', 'verify_owner'].includes(inc.decidedResponse ?? '') && input.responseKey !== inc.decidedResponse;
+  if (alreadyDecided && !upgradeToRepair) {
     // Already decided for the current set of open findings: duplicate submission (double
     // click, retry, a second tab) — report the existing decision rather than erroring or
     // recording a second time.
-    return { recorded: true, alreadyDecided: true, responseKey: inc.decidedResponse ?? input.responseKey, actionResults: [] };
+    const [repair] = inc.decidedResponse === 'simulate_repair' ? await db.select().from(incidentHistory).where(and(eq(incidentHistory.incidentId, incidentId), eq(incidentHistory.kind, 'simulation_repair'))).orderBy(desc(incidentHistory.at)).limit(1) : [];
+    return { recorded: true, alreadyDecided: true, responseKey: inc.decidedResponse ?? input.responseKey, actionResults: [], ...(repair ? { simulationResult: { state: 'confirmed' as const, outcome: repair.text as Msg } } : {}) };
   }
 
-  const snapshot = await loadSnapshot(db, actor.orgId, now);
-  const { options } = recommendOptions(snapshot, findings, now.toISOString());
-  const prompt = buildScenarioPrompt(representativeRuleId(findings), options);
+  const prompt = await availablePrompt(db, actor.orgId, findings, now);
   const option = prompt.options.find((o) => o.key === input.responseKey);
   if (!option) throw new SaathiError('VALIDATION_FAILED', 'That response is not currently offered for this incident.');
   if (option.availability === 'unavailable') throw new SaathiError('UNSUPPORTED_ACTION', 'That response is not available for this incident.');
+  if (upgradeToRepair && !['simulation_action', 'device_action', 'device_action_combo'].includes(option.kind)) throw new SaathiError('CONFLICT', 'A choice has already been saved. Select a supported fix to change it.');
 
   const actionResults: DecisionActionResult[] = [];
+  const simulationResult = option.kind === 'simulation_action' ? await repairBrowserPreview(db, actor, incidentId, findings, prompt.scenarioKey, now) : undefined;
   if (option.actionSpecs.length > 0) {
     for (const [i, spec] of option.actionSpecs.entries()) {
       try {
@@ -131,5 +148,5 @@ export async function recordScenarioDecision(db: Db, actor: Actor, incidentId: s
     .where(eq(incidents.id, incidentId));
   await db.insert(incidentHistory).values({ orgId: actor.orgId, incidentId, kind: 'decision_recorded', text: msg('history.decision_recorded', { response: input.responseKey }), actorUserId: actor.userId, at: now });
   await recordIntent(db, actor.orgId, 'incident.decision_recorded', { incidentId, responseKey: input.responseKey, kind: option.kind, actionResults, by: actor.userId }, { incidentId });
-  return { recorded: true, alreadyDecided: false, responseKey: input.responseKey, actionResults };
+  return { recorded: true, alreadyDecided: false, responseKey: input.responseKey, actionResults, ...(simulationResult ? { simulationResult } : {}) };
 }

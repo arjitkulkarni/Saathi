@@ -4,20 +4,23 @@ import { useEffect, useRef, useState } from 'react';
 import { Dialog } from 'radix-ui';
 import { AlertTriangle, ArrowLeft, ArrowRight, Eye } from 'lucide-react';
 import type { ScenarioOption, ScenarioPrompt } from '@saathi/domain';
-import type { Msg, Urgency } from '@saathi/contracts';
+import type { ActionDetailDTO, Msg, Urgency } from '@saathi/contracts';
 import { Button, Card } from '@/components/ui/primitives';
 import { Notice } from '@/components/shared/states';
-import { StatusBadge, urgencyTone } from '@/components/shared/status';
+import { StatusBadge, actionPending, actionTone, urgencyTone } from '@/components/shared/status';
 import { Time } from '@/components/shared/client';
-import { ApiError, apiGet, apiSend, newIdempotencyKey, usePolling } from '@/lib/api';
+import { ApiError, apiSend, newIdempotencyKey, usePolling } from '@/lib/api';
 import { useI18n } from '@/lib/i18n-client';
 
 type QueuedIncident = { id: string; title: Msg; urgency: Urgency; openedAt: string };
 type PromptResponse = { incidentId: string; title: Msg; urgency: Urgency; observedAt: string; facts: Msg[]; uncertain: Msg[]; simulated: boolean; prompt: ScenarioPrompt };
-type DecisionResult = { recorded: boolean; alreadyDecided: boolean; responseKey: string; actionResults: { actionType: string; actionId: string | null; duplicate: boolean; error: string | null }[] };
+type DecisionResult = { recorded: boolean; alreadyDecided: boolean; responseKey: string; actionResults: { actionType: string; actionId: string | null; duplicate: boolean; error: string | null }[]; simulationResult?: { state: 'confirmed'; outcome: Msg } };
+
+const isRepair = (option: ScenarioOption) => ['device_action', 'device_action_combo', 'simulation_action'].includes(option.kind) && option.availability === 'available';
 
 function optionHelpKey(option: ScenarioOption) {
   if (option.availability === 'unavailable') return 'decisionModal.statusUnavailable';
+  if (option.kind === 'simulation_action') return 'decisionModal.repair.simulationOnly';
   if (option.kind === 'review') return 'decisionModal.reviewHelp';
   if (option.kind === 'monitor') return 'decisionModal.monitorHelp';
   if (option.kind === 'manual') return 'decisionModal.statusManual';
@@ -44,65 +47,39 @@ function contextualFact(prompt: PromptResponse): Msg {
  * non-dismissible modal for exactly one at a time, prioritized server-side by urgency and age.
  */
 export function IncidentDecisionModal() {
-  const { t, r } = useI18n();
-  const { data: queue } = usePolling<QueuedIncident[]>('/api/v1/incidents/needing-decision', [], () => true);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState<PromptResponse | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const { data: queue, mutate: refreshQueue } = usePolling<QueuedIncident[]>('/api/v1/incidents/needing-decision', [], () => true, {
+    // Hold the current dialogue through submission and result display, even after
+    // the server removes it from the decision queue. A keyed child resets state.
+    onSuccess: items => setActiveId(current => current ?? items[0]?.id ?? null),
+  });
+  if (!activeId) return null;
+  const closeAndAdvance = async () => {
+    const latest = await refreshQueue();
+    setActiveId(latest?.find(x => x.id !== activeId)?.id ?? null);
+  };
+  return <DecisionDialog key={activeId} activeId={activeId} remaining={(queue ?? []).filter(x => x.id !== activeId).length} onClose={closeAndAdvance} />;
+}
+
+function DecisionDialog({ activeId, remaining, onClose }: { activeId: string; remaining: number; onClose: () => Promise<void> }) {
+  const { t, r } = useI18n();
+  const { data: prompt, error: loadError, mutate: refreshPrompt } = usePolling<PromptResponse>(`/api/v1/incidents/${activeId}/decision-prompt`, undefined, () => false);
   const [selected, setSelected] = useState<ScenarioOption | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<DecisionResult | null>(null);
-  const [reloadTick, setReloadTick] = useState(0);
-  const idempotencyKeys = useRef(new Map<string, string>());
+  const [idempotencyKey] = useState(newIdempotencyKey);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     dialogRef.current?.scrollTo({ top: 0 });
   }, [selected, result]);
 
-  const list = queue ?? [];
-
-  // Pick the next incident to show only when nothing is currently active, or the active one
-  // left the queue (decided elsewhere, e.g. another tab) — never swap away from an incident
-  // the user is actively looking at just because the poll reordered the queue.
-  useEffect(() => {
-    if (activeId && list.some((x) => x.id === activeId)) return;
-    setActiveId(list[0]?.id ?? null);
-  }, [list, activeId]);
-
-  useEffect(() => {
-    if (!activeId) {
-      setPrompt(null);
-      setSelected(null);
-      setResult(null);
-      return;
-    }
-    let cancelled = false;
-    setPrompt(null);
-    setLoadError(false);
-    setSelected(null);
-    setSubmitError(null);
-    setResult(null);
-    if (!idempotencyKeys.current.has(activeId)) idempotencyKeys.current.set(activeId, newIdempotencyKey());
-    apiGet<PromptResponse>(`/api/v1/incidents/${activeId}/decision-prompt`)
-      .then((p) => {
-        if (!cancelled) setPrompt(p);
-      })
-      .catch(() => {
-        if (!cancelled) setLoadError(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeId, reloadTick]);
-
   async function submit(responseKey: string) {
     if (!activeId) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const idempotencyKey = idempotencyKeys.current.get(activeId)!;
       const res = await apiSend<DecisionResult>(`/api/v1/incidents/${activeId}/decisions`, 'POST', { responseKey, idempotencyKey });
       setResult(res);
     } catch (e) {
@@ -112,13 +89,15 @@ export function IncidentDecisionModal() {
     }
   }
 
-  function closeAndAdvance() {
-    idempotencyKeys.current.delete(activeId!);
-    setActiveId(null); // the effect above immediately picks the next queued incident, if any
+  async function closeAndAdvance() {
+    // Refresh before advancing: a successful decision has already left the server queue.
+    // Keep its outcome visible until the user has had a chance to read it.
+    try {
+      await onClose();
+    } catch {
+      setSubmitError(t('decisionModal.submitError'));
+    }
   }
-
-  if (!activeId) return null;
-  const remaining = list.length - 1;
 
   return (
     <Dialog.Root open modal>
@@ -139,7 +118,7 @@ export function IncidentDecisionModal() {
                 <Notice tone="danger" className="mt-3" role="alert">
                   {t('states.errorBody')}
                 </Notice>
-                <Button className="mt-4" onClick={() => setReloadTick((n) => n + 1)}>
+                <Button className="mt-4" onClick={() => refreshPrompt()}>
                   {t('decisionModal.retry')}
                 </Button>
               </>
@@ -147,7 +126,7 @@ export function IncidentDecisionModal() {
               <><Dialog.Title className="sr-only">{t('decisionModal.title')}</Dialog.Title><p className="py-10 text-center text-[15px] text-ink-secondary" role="status">{t('common.loading')}</p></>
             )
           ) : result ? (
-            <ResultView result={result} onClose={closeAndAdvance} remaining={remaining} t={t} />
+            <ResultView result={result} onClose={closeAndAdvance} remaining={remaining} t={t} r={r} simulated={prompt.simulated} error={submitError} />
           ) : (
             <>
               <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
@@ -169,7 +148,7 @@ export function IncidentDecisionModal() {
               {prompt.simulated && <p className="mt-2 text-[14px] text-ink-secondary">{t('decisionModal.simulatedNote')}</p>}
 
               {selected ? (
-                <OptionDetail option={selected} onBack={() => setSelected(null)} onSubmit={submit} submitting={submitting} error={submitError} t={t} r={r} />
+                <OptionDetail option={selected} onBack={() => setSelected(null)} onSubmit={submit} submitting={submitting} error={submitError} t={t} r={r} onChooseRepair={() => setSelected(prompt.prompt.options.find(isRepair) ?? null)} hasRepair={prompt.prompt.options.some(isRepair)} />
               ) : (
                 <>
                   <section className="mt-5 rounded-[14px] border border-warning-ink/15 bg-warning-soft p-4 sm:p-5">
@@ -231,6 +210,8 @@ function OptionDetail({
   error,
   t,
   r,
+  onChooseRepair,
+  hasRepair,
 }: {
   option: ScenarioOption;
   onBack: () => void;
@@ -239,9 +220,12 @@ function OptionDetail({
   error: string | null;
   t: (k: string, p?: Record<string, unknown>) => string;
   r: (m: Msg) => string;
+  onChooseRepair: () => void;
+  hasRepair: boolean;
 }) {
-  const isDevice = option.kind === 'device_action' || option.kind === 'device_action_combo';
+  const isDevice = isRepair(option);
   const isMonitor = option.kind === 'monitor';
+  const guidanceOnly = option.kind === 'manual' || option.kind === 'review' || option.availability === 'unavailable';
   return (
     <div className="mt-4">
       <button type="button" disabled={submitting} onClick={onBack} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-brand-action-hover hover:underline focus-visible:outline-3 focus-visible:outline-focus">
@@ -298,17 +282,17 @@ function OptionDetail({
             {error} <Button size="sm" variant="secondary" className="ml-2" onClick={() => onSubmit(option.key)} disabled={submitting}>{t('decisionModal.retry')}</Button>
           </Notice>
         )}
-        {!error && (
+        {guidanceOnly ? (
+          <Button className="mt-4" onClick={onChooseRepair}>{t(hasRepair ? 'decisionModal.repair.reviewFix' : 'decisionModal.backToOptions')}</Button>
+        ) : !error && (
           <Button className="mt-4" disabled={submitting || option.availability === 'unavailable'} onClick={() => onSubmit(option.key)}>
             {submitting
               ? isDevice
                 ? t('decisionModal.approving')
                 : t('decisionModal.acknowledging')
               : isDevice
-                ? t('decisionModal.approve')
-                : isMonitor
-                  ? t('decisionModal.confirmMonitoring')
-                  : t('decisionModal.manualAcknowledge')}
+                ? t(option.kind === 'simulation_action' ? 'decisionModal.repair.runPractice' : option.key === 'scan' ? 'decisionModal.repair.startCheck' : 'decisionModal.repair.fixNow')
+                : t('decisionModal.confirmMonitoring')}
           </Button>
         )}
       </Card>
@@ -316,19 +300,38 @@ function OptionDetail({
   );
 }
 
-function ResultView({ result, onClose, remaining, t }: { result: DecisionResult; onClose: () => void; remaining: number; t: (k: string, p?: Record<string, unknown>) => string }) {
+function ResultView({ result, onClose, remaining, t, r, simulated, error }: { result: DecisionResult; onClose: () => void; remaining: number; t: (k: string, p?: Record<string, unknown>) => string; r: (m: Msg) => string; simulated: boolean; error: string | null }) {
   const partialFailure = result.actionResults.some((a) => a.error);
+  const actionIds = [...new Set(result.actionResults.flatMap(a => a.actionId ? [a.actionId] : []))];
   return (
     <div>
-      <Dialog.Title className="text-[20px] font-semibold">{t('decisionModal.recordedTitle')}</Dialog.Title>
-      <Notice tone="success" className="mt-3">
-        {t('decisionModal.recordedBody')}
-      </Notice>
+      <Dialog.Title className="text-[20px] font-semibold">{t(result.simulationResult ? 'decisionModal.repair.practiceDone' : actionIds.length ? 'decisionModal.repair.progress' : 'decisionModal.recordedTitle')}</Dialog.Title>
+      {simulated && <p className="mt-2 font-medium text-warning-ink">{t('decisionModal.simulatedBadge')} · {t('decisionModal.repair.simulationOnly')}</p>}
+      {result.simulationResult ? <Notice tone="success" className="mt-4">{r(result.simulationResult.outcome)}</Notice> : actionIds.length ? actionIds.map(id => <RepairActionStatus key={id} actionId={id} />) : <Notice tone="neutral" className="mt-3">{t('decisionModal.monitoringNote')}</Notice>}
       {partialFailure && <Notice tone="warning" className="mt-3">{t('decisionModal.partialResultNote')}</Notice>}
+      {error && <Notice tone="danger" role="alert" className="mt-3">{error}</Notice>}
       {remaining > 0 && <p className="mt-3 text-[13px] text-ink-secondary">{t('decisionModal.queueCount', { count: remaining })}</p>}
       <Button className="mt-5" onClick={onClose}>
         {t('decisionModal.close')}
       </Button>
     </div>
   );
+}
+
+function RepairActionStatus({ actionId }: { actionId: string }) {
+  const { t, r } = useI18n();
+  const { data, error, mutate } = usePolling<ActionDetailDTO>(`/api/v1/actions/${actionId}`, undefined, d => !d || actionPending(d.state) || d.state === 'unknown');
+  return <Card className="mt-4" aria-live="polite">
+    {data ? <>
+      <p className="font-semibold">{r(data.title)}</p>
+      <StatusBadge className="mt-2" tone={actionTone(data.state)} pending={actionPending(data.state)} label={t(`status.action.${data.state}`)} />
+      <p className="mt-3 text-[15px]">{t(`decisionModal.repair.result.${data.state}`)}</p>
+      {data.actionType === 'device.request_av_scan' && <p className="mt-2 text-[14px]">{t('decisionModal.repair.scanBoundary')}</p>}
+      <details className="mt-3 text-[14px]"><summary className="cursor-pointer">{t('decisionModal.showDetails')}</summary><p className="mt-2">{r(data.outcome)}</p></details>
+      {data.remainingFindings.length > 0 && <p className="mt-2 text-[14px] text-warning-ink">{t('decisionModal.repair.remaining')}</p>}
+      {data.device?.simulated && <p className="mt-2 text-[14px]">{t('decisionModal.repair.simulationOnly')}</p>}
+    </> : <p>{t('decisionModal.repair.checking')}</p>}
+    {error && <p role="alert" className="mt-2">{t('decisionModal.repair.statusUnknown')}</p>}
+    <Button variant="secondary" className="mt-3" onClick={() => mutate()}>{t('action.checkStatus')}</Button>
+  </Card>;
 }

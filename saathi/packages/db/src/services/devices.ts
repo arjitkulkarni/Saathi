@@ -30,6 +30,7 @@ import {
   enrollmentCodes,
   eventDispositions,
   incidentHistory,
+  incidentFindings,
   incidents,
   rawEvents,
   organizations,
@@ -100,14 +101,13 @@ function previewScenarioEvents(scenario: PreviewScenario, now: Date) {
           nativeEventId: rid(),
           type: 'malware.detected' as const,
           observedAt: new Date(now.getTime() - 135_000).toISOString(),
-          facts: { threatId: 'PREVIEW-0001', threatName: 'Preview.Trojan.Illustrative (not a real detection)', severity: 'Severe' },
+          facts: { threatId: `PREVIEW-${rid()}`, threatName: 'Preview.Trojan.Illustrative (not a real detection)', severity: 'Severe' },
         },
       ];
     case 'protection_disabled':
       return [{ logEpoch: epoch, channel: 'Microsoft-Windows-Windows Defender/Operational', nativeEventId: rid(), type: 'protection.disabled' as const, observedAt: now.toISOString(), facts: { component: 'av' } }];
     case 'password_guessing': {
-      // Five failed attempts then one success for the same username, matching the
-      // possible_compromise correlation rule (packages/domain PRESETS.passwordGuessing).
+      // This scenario is repeated failed sign-ins, not a successful compromise.
       const events: AgentEvent[] = Array.from({ length: 5 }, (_, i) => ({
         logEpoch: epoch,
         channel: 'Security',
@@ -116,7 +116,6 @@ function previewScenarioEvents(scenario: PreviewScenario, now: Date) {
         observedAt: new Date(now.getTime() - (5 - i) * 4_000).toISOString(),
         facts: { username: 'preview.user', sourceAddress: '203.0.113.7' },
       }));
-      events.push({ logEpoch: epoch, channel: 'Security', nativeEventId: rid(), type: 'auth.succeeded' as const, observedAt: now.toISOString(), facts: { username: 'preview.user', logonType: 3 } });
       return events;
     }
   }
@@ -156,6 +155,25 @@ export async function runAttackPreview(pool: pg.Pool, rawCode: string, scenario:
   const dev = await resolvePreviewDevice(pool, rawCode);
   const now = new Date();
   const events = previewScenarioEvents(scenario, now);
+  await withTx(pool, { orgId: dev.orgId }, async db => {
+    // Reset only this browser fixture's scenario. A new practice run needs a new
+    // decision even if the previous practice repair was successful.
+    const [device] = await db.select().from(devices).where(and(eq(devices.orgId, dev.orgId), eq(devices.id, dev.deviceId)));
+    if (!device?.simulated || device.agentVersion !== 'preview' || device.osVersion !== 'preview') throw new SaathiError('FORBIDDEN', 'Only browser practice devices can run this scenario.');
+    const rule = scenario === 'malware_detected' ? 'unresolved_malware' : scenario;
+    const old = await db.select().from(incidentFindings).where(and(eq(incidentFindings.orgId, dev.orgId), eq(incidentFindings.targetId, dev.deviceId), eq(incidentFindings.ruleId, rule)));
+    if (old.length) await db.select({ id: incidents.id }).from(incidents).where(inArray(incidents.id, old.map(f => f.incidentId))).orderBy(incidents.id).for('update');
+    await db.select({ id: devices.id }).from(devices).where(eq(devices.id, dev.deviceId)).for('update');
+    for (const finding of old) {
+      await db.update(incidentFindings).set({ status: 'open', updatedAt: now }).where(eq(incidentFindings.id, finding.id));
+      await db.update(incidents).set({ state: 'investigating', decidedAt: null, decidedFindingIds: null, decidedResponse: null }).where(and(eq(incidents.id, finding.incidentId), eq(incidents.orgId, dev.orgId)));
+      await reassessIncident(db, dev.orgId, finding.incidentId, { newRelevantEvidence: true, at: now });
+    }
+    const [prior] = await db.select().from(devicePosture).where(eq(devicePosture.deviceId, dev.deviceId)).orderBy(desc(devicePosture.revision)).limit(1);
+    const key = scenario === 'protection_disabled' ? 'av' : scenario === 'malware_detected' ? 'preview_threat' : 'preview_blocked_source';
+    const value = scenario === 'protection_disabled' ? 'off' : scenario === 'malware_detected' ? 'active' : null;
+    await db.insert(devicePosture).values({ orgId: dev.orgId, deviceId: dev.deviceId, revision: (prior?.revision ?? 0) + 1, checks: { ...(prior?.checks ?? {}), [key]: { result: 'fail', value, source: 'browser_simulation', observedAt: now.toISOString() } }, observedAt: now });
+  });
   await ingestEvents(pool, { deviceId: dev.deviceId, orgId: dev.orgId, simulated: true }, { batchId: `preview-${now.getTime()}`, events, droppedSinceLast: 0, spoolDepth: 0 });
   return { deviceId: dev.deviceId };
 }

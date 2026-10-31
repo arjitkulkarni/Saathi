@@ -53,6 +53,7 @@ describe('scenario decision queue and prompt', () => {
     const restore = prompt.prompt.options.find((o) => o.key === 'restore')!;
     expect(restore.availability).toBe('available');
     expect(prompt.simulated).toBe(true); // this device was enrolled with simulated: true
+    expect(prompt.prompt.options.some(o => o.kind === 'simulation_action')).toBe(false); // agent-backed devices use their agent, never the browser repair shortcut
   });
 
   it('a staff (read-only-for-decisions) actor cannot see the queue or the prompt', async () => {

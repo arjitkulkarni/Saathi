@@ -10,7 +10,7 @@ import { msg, type ActionOption, type ActionParams, type ActionType, type Msg } 
 // the action/preview machinery at all.
 
 export type ScenarioKey = 'unresolved_malware' | 'protection_disabled' | 'password_guessing' | 'generic';
-export type ScenarioResponseKind = 'device_action' | 'device_action_combo' | 'manual' | 'monitor' | 'review';
+export type ScenarioResponseKind = 'device_action' | 'device_action_combo' | 'simulation_action' | 'manual' | 'monitor' | 'review';
 export type ScenarioAvailability = 'available' | 'manual' | 'unavailable';
 
 export type ScenarioDeviceActionSpec = { actionType: ActionType; targetType: 'device'; targetId: string; params: ActionParams };
@@ -32,6 +32,19 @@ export type ScenarioOption = {
 };
 
 export type ScenarioPrompt = { scenarioKey: ScenarioKey; message: Msg; options: ScenarioOption[] };
+
+/** Only the server may enable this for its browser-only preview device. No agent commands. */
+export function withBrowserPreviewRepair(prompt: ScenarioPrompt): ScenarioPrompt {
+  if (prompt.scenarioKey === 'generic') return prompt;
+  const replaces = prompt.scenarioKey === 'protection_disabled' ? 'restore' : prompt.scenarioKey === 'password_guessing' ? 'block_source' : null;
+  return { ...prompt, options: [{
+    key: 'simulate_repair', kind: 'simulation_action', availability: 'available', unavailableReason: null,
+    label: msg(`decisionModal.repair.${prompt.scenarioKey}.label`),
+    benefit: msg(`decisionModal.repair.${prompt.scenarioKey}.benefit`),
+    consequences: [msg('decisionModal.repair.simulationOnly')],
+    scope: msg('scenario.scope.this_device'), reversible: null, recommended: true, actionSpecs: [],
+  }, ...prompt.options.filter(o => o.key !== replaces).map((o) => ({ ...o, recommended: false }))] };
+}
 
 function findOpt(options: ActionOption[], actionType: ActionType): ActionOption | null {
   return options.find((o) => o.actionType === actionType) ?? null;
