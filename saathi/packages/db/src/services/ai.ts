@@ -98,3 +98,8 @@ function recordOutcome(provider: string, cap: Capability, ok: boolean) {
   }
   breaker.set(key, s);
 }
+
+/** Test-only: clear breaker state between cases. */
+export function __resetAiState() {
+  breaker.clear();
+}
