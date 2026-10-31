@@ -143,7 +143,7 @@ Results from the last run are in [docs/verification.md](docs/verification.md).
 - **"Too many sign-in attempts"**: Better Auth's sign-in rate limit (3 per 10 s) is intentionally on. Wait 10 seconds.
 - **Git Bash mangles `/app/...` arguments**: prefix the command with `MSYS_NO_PATHCONV=1`.
 - **Device shows "Waiting for agent" or "Offline"**: the agent sends a heartbeat every 30 s. Approvals are refused for stale devices by design.
-- **Telegram alert links point to `localhost:3000`**: there is no persistent production worker yet — background jobs only run when someone starts `pnpm dev:worker` by hand, and it reads `APP_ORIGIN` from whatever `.env` it's launched with. If you point `DATABASE_URL`/`DATABASE_URL_WORKER` at the production Neon database to process real jobs, also set `APP_ORIGIN` to the production origin for that run (and revert both afterward) — otherwise delivered alerts link back to your local dev server.
+- **Telegram alert links point to `localhost:3000`**: there is no persistent production worker yet — background jobs only run when someone starts the worker by hand. Use `pnpm worker:prod` (not `pnpm dev:worker`) to process the production job queue; it loads `.local/.env.worker-prod` instead of the root `.env`, so `APP_ORIGIN` is always the production origin and never gets mixed up with your local dev config. Don't run `dev:worker` and `worker:prod` against the same database at the same time.
 
 ## Known blockers and limitations
 

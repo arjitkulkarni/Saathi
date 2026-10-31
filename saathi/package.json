@@ -6,6 +6,7 @@
   "scripts": {
     "dev:web": "pnpm --filter @saathi/web dev",
     "dev:worker": "pnpm --filter @saathi/worker dev",
+    "worker:prod": "pnpm --filter @saathi/worker dev:prod",
     "dev:agent": "pnpm --filter @saathi/agent dev",
     "db:local:init": "node scripts/local-postgres.mjs init",
     "db:local:start": "node scripts/local-postgres.mjs start",
