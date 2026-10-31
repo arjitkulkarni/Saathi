@@ -1,0 +1,14 @@
+node_modules/
+.local/
+.env
+.env.*
+!.env.example
+.next/
+out/
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+apps/agent/dist/
+apps/agent/windows-helper/bin/
+apps/web/public/verifier/
