@@ -137,10 +137,7 @@ function DecisionDialog({ activeId, remaining, onClose }: { activeId: string; re
                   <AlertTriangle aria-hidden className="mt-1 size-6 shrink-0 text-warning-ink" />
                   {prompt.prompt.scenarioKey === 'generic' ? r(prompt.title) : t(`decisionModal.story.${prompt.prompt.scenarioKey}.title`)}
                 </Dialog.Title>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <StatusBadge tone={urgencyTone(prompt.urgency)} label={t(`status.urgency.${prompt.urgency}`)} />
-                  {prompt.simulated && <StatusBadge tone="warning" label={t('common.simulatedBadge')} />}
-                </div>
+                <StatusBadge className="shrink-0" tone={urgencyTone(prompt.urgency)} label={t(`status.urgency.${prompt.urgency}`)} />
               </div>
               <p className="mt-2 text-[13px] text-ink-secondary">
                 <Time iso={prompt.observedAt} />
@@ -338,7 +335,6 @@ function RepairActionStatus({ actionId }: { actionId: string }) {
       {data.actionType === 'device.request_av_scan' && <p className="mt-2 text-[14px]">{t('decisionModal.repair.scanBoundary')}</p>}
       <details className="mt-3 text-[14px]"><summary className="cursor-pointer">{t('decisionModal.showDetails')}</summary><p className="mt-2">{r(data.outcome)}</p></details>
       {data.remainingFindings.length > 0 && <p className="mt-2 text-[14px] text-warning-ink">{t('decisionModal.repair.remaining')}</p>}
-      {data.device?.simulated && <StatusBadge className="mt-2" tone="warning" label={t('common.simulatedBadge')} />}
     </> : <p>{t('decisionModal.repair.checking')}</p>}
     {error && <p role="alert" className="mt-2">{t('decisionModal.repair.statusUnknown')}</p>}
     <Button variant="secondary" className="mt-3" onClick={() => mutate()}>{t('action.checkStatus')}</Button>
