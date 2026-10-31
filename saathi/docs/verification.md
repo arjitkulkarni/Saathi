@@ -8,7 +8,6 @@ Only checks that were actually run are recorded as passed. Anything not run is m
 - Database: Neon (PostgreSQL 18.6) for development since D-025; local PostgreSQL 18.3 cluster (D-004), `127.0.0.1:55432`, with separate migrator, app and worker roles (none can bypass RLS). The integration tests use a separate `saathi_test` database migrated with `pnpm db:migrate -- --test`.
 - Services during browser checks: `next dev` on :3000, the persistent worker, and a simulated agent (`--simulate`, labelled).
 - Not available:
-  - Telegram bot token.
   - Anthropic API key.
   - S3 credentials.
   - Bitcoin Core RPC node, and a reachable Esplora service (blockstream.info returned 429; mempool.space timed out).
@@ -65,7 +64,7 @@ Only checks that were actually run are recorded as passed. Anything not run is m
 Additional gates verified in `protocols.test.ts`:
 - Enrollment codes are single-use.
 - Duplicate event batches are stored once.
-- Telegram link codes are single-use; update dedupe works, and group chats and unlinked chats are ignored. This used synthetic webhook payloads, not the live Bot API.
+- Telegram link codes are single-use; update dedupe works, and group chats and unlinked chats are ignored. This used synthetic webhook payloads in `protocols.test.ts`, not the live Bot API. Separately, 2026-10-31: `scripts/register-telegram.mjs` registered the production webhook for `@v_saathi_bot` against https://saathi-woad.vercel.app/, and a synthetic payload posted directly to the production route (correct secret header) returned `{"ok":true}`, confirming the production env vars and database path work. No real Telegram-initiated update (a human tapping the deep link) has been exercised yet.
 - Three distinct reporters create one scam campaign and one incident.
 
 ## E2E (Playwright, desktop Chromium 1440×900)
