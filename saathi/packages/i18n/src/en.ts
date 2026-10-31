@@ -576,6 +576,7 @@ export const en = {
     downloadAgent: 'Download the Saathi agent for Windows',
     smartScreenNote: 'The download is not code-signed yet, so Windows SmartScreen will warn. Choose "More info" then "Run anyway".',
     installSteps: 'On the computer: download the agent above, open a terminal where you saved it, then run this command with the code filled in.',
+    previewLink: 'Or preview what Saathi shows, without installing anything',
     empty: 'No devices enrolled yet.',
     lastSeen: 'Last seen {time}',
     waiting: 'Waiting for agent',
@@ -611,6 +612,18 @@ export const en = {
       device_request_av_scan: 'Request antivirus scan',
       device_undo_change: 'Restore an earlier setting',
     },
+  },
+  connect: {
+    title: 'See what Saathi detects',
+    simulatedNotice: 'Everything on this page is a simulated example, clearly labelled as synthetic. Nothing here reads, changes or accesses this computer in any way.',
+    body: 'Choose one to see what it would look like on the organization’s dashboard. This does not install anything or affect your computer.',
+    scenario: {
+      malware_detected: 'Simulate a malware detection, unresolved',
+      protection_disabled: 'Simulate antivirus protection turned off',
+      password_guessing: 'Simulate repeated failed sign-in attempts',
+    },
+    done: '{scenario} — sent',
+    checkDashboard: 'Sent. The organization owner will see this appear on their Saathi dashboard, labelled as a simulated example.',
   },
   people: {
     title: 'People and access',

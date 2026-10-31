@@ -86,6 +86,14 @@ export function AddDeviceDialog({ onDone }: { onDone?: () => void }) {
               <Hint>{t('devices.smartScreenNote')}</Hint>
               <Hint>{t('devices.installSteps')}</Hint>
               <CopyField label="command" value={`.\\saathi-agent-windows-x64.exe --server ${typeof window !== 'undefined' ? window.location.origin : ''} --code ${code.code} --observe-only`} />
+              <Link
+                href={`/connect/${code.code}`}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex min-h-11 items-center text-[14px] font-medium text-brand-action-hover underline underline-offset-4 hover:no-underline"
+              >
+                {t('devices.previewLink')}
+              </Link>
             </div>
           )}
         </Dialog.Content>

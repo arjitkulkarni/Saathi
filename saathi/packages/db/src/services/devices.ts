@@ -6,6 +6,7 @@ import {
   deviceSigningString,
   msg,
   SaathiError,
+  type AgentEvent,
   type CommandEnvelope,
   type CommandResult,
   type DeviceCardDTO,
@@ -71,6 +72,92 @@ export async function enrollDevice(pool: pg.Pool, req: EnrollRequest, cfg: { enc
     await recordIntent(db, code.orgId, 'device.enrolled', { deviceId: device.id, hostname: req.hostname, simulated: req.simulated });
     return { deviceId: device.id, orgId: code.orgId, deviceSecret: secret, keyVersion: 1, commandKeys: cfg.commandKeys, pollIntervalSeconds: 2 };
   });
+}
+
+// ------------------------------------------------------------------ web attack-simulation preview
+//
+// A browser-only preview of what Saathi shows when it detects something, reachable from the
+// enrollment code without any Saathi account (decision: the recipient "logs in" with the
+// one-use code itself, not a password). It only ever injects clearly synthetic events — the
+// same thing `pnpm dev:agent --simulate --code <code>` already does from a terminal — through
+// the device's always-`simulated: true` flag; it can never create a real device, run a real
+// action, or affect anything but the one preview device bound to this code.
+
+export const PREVIEW_SCENARIOS = ['malware_detected', 'protection_disabled', 'password_guessing'] as const;
+export type PreviewScenario = (typeof PREVIEW_SCENARIOS)[number];
+
+function previewScenarioEvents(scenario: PreviewScenario, now: Date) {
+  const epoch = `preview-${now.getTime()}`;
+  const rid = () => randomBytes(6).toString('hex');
+  switch (scenario) {
+    case 'malware_detected':
+      // Backdated past the real unresolved-malware grace period (packages/domain PRESETS,
+      // currently 120s) so the next scheduled check — not a wait — surfaces the incident.
+      return [
+        {
+          logEpoch: epoch,
+          channel: 'Microsoft-Windows-Windows Defender/Operational',
+          nativeEventId: rid(),
+          type: 'malware.detected' as const,
+          observedAt: new Date(now.getTime() - 135_000).toISOString(),
+          facts: { threatId: 'PREVIEW-0001', threatName: 'Preview.Trojan.Illustrative (not a real detection)', severity: 'Severe' },
+        },
+      ];
+    case 'protection_disabled':
+      return [{ logEpoch: epoch, channel: 'Microsoft-Windows-Windows Defender/Operational', nativeEventId: rid(), type: 'protection.disabled' as const, observedAt: now.toISOString(), facts: { component: 'av' } }];
+    case 'password_guessing': {
+      // Five failed attempts then one success for the same username, matching the
+      // possible_compromise correlation rule (packages/domain PRESETS.passwordGuessing).
+      const events: AgentEvent[] = Array.from({ length: 5 }, (_, i) => ({
+        logEpoch: epoch,
+        channel: 'Security',
+        nativeEventId: rid(),
+        type: 'auth.failed' as const,
+        observedAt: new Date(now.getTime() - (5 - i) * 4_000).toISOString(),
+        facts: { username: 'preview.user', sourceAddress: '203.0.113.7' },
+      }));
+      events.push({ logEpoch: epoch, channel: 'Security', nativeEventId: rid(), type: 'auth.succeeded' as const, observedAt: now.toISOString(), facts: { username: 'preview.user', logonType: 3 } });
+      return events;
+    }
+  }
+}
+
+/**
+ * Resolve the one preview device bound to this enrollment code, creating it (simulated: true)
+ * on first use. The code is still consumed exactly once for real enrollment — if someone has
+ * already enrolled a real agent with it, this refuses rather than silently reusing that device.
+ */
+async function resolvePreviewDevice(pool: pg.Pool, rawCode: string) {
+  const codeHash = sha256(rawCode.trim().toUpperCase());
+  const lookup = await withTx(pool, {}, async (_db, client) => (await client.query('SELECT org_id, code_id FROM saathi_enrollment_lookup($1)', [codeHash])).rows[0]);
+  if (!lookup) throw new SaathiError('UNAUTHENTICATED', 'This preview link is not valid.');
+  return withTx(pool, { orgId: lookup.org_id }, async (db) => {
+    const [code] = await db.select().from(enrollmentCodes).where(eq(enrollmentCodes.id, lookup.code_id)).for('update');
+    if (!code) throw new SaathiError('UNAUTHENTICATED', 'This preview link is not valid.');
+    if (code.consumedAt) {
+      if (!code.deviceId) throw new SaathiError('UNAUTHENTICATED', 'This preview link was already used.');
+      const [existing] = await db.select({ id: devices.id, orgId: devices.orgId, simulated: devices.simulated }).from(devices).where(eq(devices.id, code.deviceId));
+      if (!existing?.simulated) throw new SaathiError('UNAUTHENTICATED', 'This code was already used to enroll a real device, not a preview.');
+      return { deviceId: existing.id, orgId: existing.orgId };
+    }
+    if (code.expiresAt.getTime() < Date.now()) throw new SaathiError('UNAUTHENTICATED', 'This preview link has expired.');
+    const [device] = await db
+      .insert(devices)
+      .values({ orgId: code.orgId, name: code.deviceName, status: 'connected', hostname: 'Web preview (no real device)', osVersion: 'preview', agentVersion: 'preview', simulated: true, lastSeenAt: new Date() })
+      .returning({ id: devices.id });
+    await db.update(enrollmentCodes).set({ consumedAt: new Date(), deviceId: device.id }).where(eq(enrollmentCodes.id, code.id));
+    await recordIntent(db, code.orgId, 'device.enrolled', { deviceId: device.id, hostname: 'web preview', simulated: true });
+    return { deviceId: device.id, orgId: code.orgId };
+  });
+}
+
+/** Inject one labelled-synthetic scenario for the preview device bound to this code. */
+export async function runAttackPreview(pool: pg.Pool, rawCode: string, scenario: PreviewScenario) {
+  const dev = await resolvePreviewDevice(pool, rawCode);
+  const now = new Date();
+  const events = previewScenarioEvents(scenario, now);
+  await ingestEvents(pool, { deviceId: dev.deviceId, orgId: dev.orgId, simulated: true }, { batchId: `preview-${now.getTime()}`, events, droppedSinceLast: 0, spoolDepth: 0 });
+  return { deviceId: dev.deviceId };
 }
 
 // ------------------------------------------------------------------ device request auth
