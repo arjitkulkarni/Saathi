@@ -52,7 +52,7 @@ node scripts/generate-env.mjs   # writes .env: DB URLs from .local/db.env, fresh
 [.env.example](.env.example) documents every variable. Leave these empty unless you have real credentials:
 
 - `TELEGRAM_*`
-- `ANTHROPIC_API_KEY` / `AI_MODEL`
+- `AI_PROVIDER` (`xai` default, or `anthropic`) + the matching key (`XAI_API_KEY` or `ANTHROPIC_API_KEY`) + `AI_MODEL` (text) and `AI_VISION_MODEL` (screenshot OCR)
 - `OBJECT_STORAGE_*` (S3)
 - `BITCOIN_*`
 
