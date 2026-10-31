@@ -78,3 +78,23 @@ export function aiVisionAvailable(cfg: AiConfig) {
   return aiVisionConfigured(cfg) && breakerAllows(cfg.provider, 'vision');
 }
 
+// --- Circuit breaker (per provider + capability, process-local only) ----------------------
+// Scoped so a vision-model misconfiguration cannot disable working text explanations. This
+// state is per process; the web and worker processes keep independent breakers.
+
+const breaker = new Map<string, { fails: number; openUntil: number }>();
+const bkey = (provider: string, cap: Capability) => `${provider}:${cap}`;
+function breakerAllows(provider: string, cap: Capability) {
+  return Date.now() >= (breaker.get(bkey(provider, cap))?.openUntil ?? 0);
+}
+function recordOutcome(provider: string, cap: Capability, ok: boolean) {
+  const key = bkey(provider, cap);
+  const s = breaker.get(key) ?? { fails: 0, openUntil: 0 };
+  if (ok) {
+    s.fails = 0;
+  } else if (++s.fails >= 3) {
+    s.openUntil = Date.now() + 5 * 60 * 1000; // back off for five minutes
+    s.fails = 0;
+  }
+  breaker.set(key, s);
+}
