@@ -181,3 +181,33 @@ async function xaiParse<T extends z.ZodType>(
   }
   return null;
 }
+
+async function anthropicParse<T extends z.ZodType>(
+  cfg: AiConfig,
+  cap: Capability,
+  model: string,
+  schema: T,
+  system: string,
+  content: Anthropic.MessageParam['content'],
+  maxTokens: number,
+): Promise<z.infer<T> | null> {
+  try {
+    const response = await new Anthropic({ apiKey: cfg.apiKey, timeout: cfg.timeoutMs ?? 20_000, maxRetries: 1 }).messages.parse({
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content }],
+      output_config: { format: zodOutputFormat(schema) },
+    });
+    if (response.stop_reason === 'refusal' || !response.parsed_output) {
+      recordOutcome(cfg.provider, cap, false);
+      return null;
+    }
+    const checked = schema.safeParse(response.parsed_output);
+    recordOutcome(cfg.provider, cap, checked.success);
+    return checked.success ? checked.data : null;
+  } catch {
+    recordOutcome(cfg.provider, cap, false);
+    return null;
+  }
+}
