@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Dialog } from 'radix-ui';
-import { AlertTriangle, ArrowLeft, Eye } from 'lucide-react';
-import type { ScenarioAvailability, ScenarioOption, ScenarioPrompt } from '@saathi/domain';
+import { AlertTriangle, ArrowLeft, ArrowRight, Eye } from 'lucide-react';
+import type { ScenarioOption, ScenarioPrompt } from '@saathi/domain';
 import type { Msg, Urgency } from '@saathi/contracts';
 import { Button, Card } from '@/components/ui/primitives';
 import { Notice } from '@/components/shared/states';
@@ -16,7 +16,25 @@ type QueuedIncident = { id: string; title: Msg; urgency: Urgency; openedAt: stri
 type PromptResponse = { incidentId: string; title: Msg; urgency: Urgency; observedAt: string; facts: Msg[]; uncertain: Msg[]; simulated: boolean; prompt: ScenarioPrompt };
 type DecisionResult = { recorded: boolean; alreadyDecided: boolean; responseKey: string; actionResults: { actionType: string; actionId: string | null; duplicate: boolean; error: string | null }[] };
 
-const AVAILABILITY_LABEL_KEY: Record<ScenarioAvailability, string> = { available: 'decisionModal.statusAvailable', manual: 'decisionModal.statusManual', unavailable: 'decisionModal.statusUnavailable' };
+function optionHelpKey(option: ScenarioOption) {
+  if (option.availability === 'unavailable') return 'decisionModal.statusUnavailable';
+  if (option.kind === 'review') return 'decisionModal.reviewHelp';
+  if (option.kind === 'monitor') return 'decisionModal.monitorHelp';
+  if (option.kind === 'manual') return 'decisionModal.statusManual';
+  return 'decisionModal.statusAvailable';
+}
+
+// Substitute only structured source facts, never infer a device, count, or cause from prose.
+function contextualFact(prompt: PromptResponse): Msg {
+  const sourceKey = {
+    unresolved_malware: 'fact.malware_unresolved',
+    protection_disabled: 'fact.protection_disabled',
+    password_guessing: 'fact.repeated_wrong_passwords',
+    generic: '',
+  }[prompt.prompt.scenarioKey];
+  const fact = prompt.facts.find((f) => f.key === sourceKey);
+  return fact ? { ...fact, key: `decisionModal.story.${prompt.prompt.scenarioKey}.observed` } : prompt.prompt.message;
+}
 
 /**
  * Scenario-based incident popup (frontend spec). Mounted once for the whole authenticated
@@ -26,7 +44,7 @@ const AVAILABILITY_LABEL_KEY: Record<ScenarioAvailability, string> = { available
  * non-dismissible modal for exactly one at a time, prioritized server-side by urgency and age.
  */
 export function IncidentDecisionModal() {
-  const { t, r, time } = useI18n();
+  const { t, r } = useI18n();
   const { data: queue } = usePolling<QueuedIncident[]>('/api/v1/incidents/needing-decision', [], () => true);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<PromptResponse | null>(null);
@@ -37,6 +55,11 @@ export function IncidentDecisionModal() {
   const [result, setResult] = useState<DecisionResult | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const idempotencyKeys = useRef(new Map<string, string>());
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.scrollTo({ top: 0 });
+  }, [selected, result]);
 
   const list = queue ?? [];
 
@@ -102,7 +125,8 @@ export function IncidentDecisionModal() {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
         <Dialog.Content
-          className="saathi-fade fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[min(94vw,640px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-[18px] bg-surface p-6 shadow-[var(--shadow-raised)]"
+          ref={dialogRef}
+          className="saathi-fade fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(94vw,800px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto overscroll-contain rounded-[20px] bg-surface p-5 shadow-[var(--shadow-raised)] sm:p-7"
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
@@ -120,20 +144,18 @@ export function IncidentDecisionModal() {
                 </Button>
               </>
             ) : (
-              <p className="py-10 text-center text-[15px] text-ink-secondary" role="status">
-                {t('common.loading')}
-              </p>
+              <><Dialog.Title className="sr-only">{t('decisionModal.title')}</Dialog.Title><p className="py-10 text-center text-[15px] text-ink-secondary" role="status">{t('common.loading')}</p></>
             )
           ) : result ? (
             <ResultView result={result} onClose={closeAndAdvance} remaining={remaining} t={t} />
           ) : (
             <>
-              <div className="flex items-start justify-between gap-3">
-                <Dialog.Title className="flex items-center gap-2 text-[20px] font-semibold">
-                  <AlertTriangle aria-hidden className="size-5 text-warning-ink" />
-                  {r(prompt.title)}
+              <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+                <Dialog.Title className="flex items-start gap-3 text-[22px] font-semibold leading-tight sm:text-[26px]">
+                  <AlertTriangle aria-hidden className="mt-1 size-6 shrink-0 text-warning-ink" />
+                  {prompt.prompt.scenarioKey === 'generic' ? r(prompt.title) : t(`decisionModal.story.${prompt.prompt.scenarioKey}.title`)}
                 </Dialog.Title>
-                <StatusBadge tone={urgencyTone(prompt.urgency)} label={t(`status.urgency.${prompt.urgency}`)} />
+                <StatusBadge className="shrink-0" tone={urgencyTone(prompt.urgency)} label={t(`status.urgency.${prompt.urgency}`)} />
               </div>
               {prompt.simulated && (
                 <span className="mt-2 inline-flex w-fit items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-1 text-[12px] font-semibold tracking-wide text-warning-ink">
@@ -141,37 +163,27 @@ export function IncidentDecisionModal() {
                   {t('decisionModal.simulatedBadge')}
                 </span>
               )}
-              <p className="mt-2 text-[14px] text-ink-secondary">
+              <p className="mt-2 text-[13px] text-ink-secondary">
                 <Time iso={prompt.observedAt} />
               </p>
-              {prompt.simulated && <Notice tone="neutral" className="mt-3">{t('decisionModal.simulatedNote')}</Notice>}
+              {prompt.simulated && <p className="mt-2 text-[14px] text-ink-secondary">{t('decisionModal.simulatedNote')}</p>}
 
               {selected ? (
                 <OptionDetail option={selected} onBack={() => setSelected(null)} onSubmit={submit} submitting={submitting} error={submitError} t={t} r={r} />
               ) : (
                 <>
-                  <Notice tone="warning" className="mt-3">{r(prompt.prompt.message)}</Notice>
-                  {prompt.facts.length > 0 && (
-                    <section className="mt-4">
-                      <h2 className="text-[14px] font-semibold text-ink-secondary">{t('decisionModal.whatWasObserved')}</h2>
-                      <ul className="mt-1.5 space-y-1 text-[15px]">
-                        {prompt.facts.map((f, i) => (
-                          <li key={i}>{r(f)}</li>
-                        ))}
-                      </ul>
-                    </section>
-                  )}
-                  {prompt.uncertain.length > 0 && (
-                    <section className="mt-3">
-                      <h2 className="text-[14px] font-semibold text-ink-secondary">{t('decisionModal.whatIsUncertain')}</h2>
-                      <ul className="mt-1.5 space-y-1 text-[15px] text-ink-secondary">
-                        {prompt.uncertain.map((f, i) => (
-                          <li key={i}>{r(f)}</li>
-                        ))}
-                      </ul>
-                    </section>
-                  )}
+                  <section className="mt-5 rounded-[14px] border border-warning-ink/15 bg-warning-soft p-4 sm:p-5">
+                    <h2 className="text-[15px] font-semibold">{t('decisionModal.whatWasObserved')}</h2>
+                    <p className="mt-2 text-[16px] leading-relaxed">{r(contextualFact(prompt))}</p>
+                    <h2 className="mt-4 text-[15px] font-semibold">{t('decisionModal.forYourWork')}</h2>
+                    <p className="mt-1 text-[15px] leading-relaxed">{t(`decisionModal.story.${prompt.prompt.scenarioKey}.meaning`)}</p>
+                  </section>
                   <OptionList prompt={prompt.prompt} onSelect={setSelected} t={t} r={r} />
+                  <details className="mt-5 border-t border-border-subtle pt-3 text-[14px]">
+                    <summary className="cursor-pointer rounded font-medium text-ink-secondary focus-visible:outline-3 focus-visible:outline-focus">{t('decisionModal.showDetails')}</summary>
+                    <ul className="mt-3 space-y-2 break-words">{prompt.facts.map((f, i) => <li key={i}>{r(f)}</li>)}</ul>
+                    {prompt.uncertain.length > 0 && <><h3 className="mt-3 font-semibold">{t('decisionModal.whatIsUncertain')}</h3><ul className="mt-1 space-y-2">{prompt.uncertain.map((f, i) => <li key={i}>{r(f)}</li>)}</ul></>}
+                  </details>
                 </>
               )}
               {remaining > 0 && <p className="mt-4 text-[13px] text-ink-secondary">{t('decisionModal.queueCount', { count: remaining })}</p>}
@@ -188,26 +200,25 @@ function OptionList({ prompt, onSelect, t, r }: { prompt: ScenarioPrompt; onSele
   const others = prompt.options.filter((o) => o !== recommended);
   const row = (o: ScenarioOption) => (
     <li key={o.key}>
-      <button type="button" onClick={() => onSelect(o)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-[12px] border border-border-subtle bg-surface px-3 py-2.5 text-left hover:bg-canvas-warm">
-        <span className="text-[15px] font-medium">{r(o.label)}</span>
-        <StatusBadge tone={o.availability === 'available' ? 'success' : o.availability === 'manual' ? 'neutral' : 'danger'} label={t(AVAILABILITY_LABEL_KEY[o.availability])} />
+      <button type="button" onClick={() => onSelect(o)} className={`flex h-full min-h-11 w-full flex-col items-start rounded-[14px] border p-4 text-left transition-colors hover:bg-canvas-warm focus-visible:outline-3 focus-visible:outline-focus ${o.recommended ? 'border-brand-action bg-canvas-warm' : 'border-border-subtle bg-surface'}`}>
+        {o.recommended && <span className="mb-2 text-[12px] font-semibold text-brand-action-hover">{t('decisionModal.recommended')}</span>}
+        <span className="text-[17px] font-semibold leading-snug">{r(o.label)}</span>
+        <span className="mt-1 text-[12px] font-medium text-ink-secondary">{t(optionHelpKey(o))}</span>
+        {o.benefit && <span className="mt-3 text-[14px] leading-relaxed">{r(o.benefit)}</span>}
+        <span className="mt-3 text-[13px] font-semibold">{t('decisionModal.consequences')}</span>
+        <span className="mt-1 space-y-1 text-[14px] leading-relaxed text-ink-secondary">
+          {o.consequences.map((c, i) => <span className="block" key={i}>{r(c)}</span>)}
+        </span>
+        {o.unavailableReason && <span className="mt-3 text-[13px] text-warning-ink">{r(o.unavailableReason)}</span>}
+        <span className="mt-auto flex items-center gap-2 pt-4 text-[13px] font-semibold text-brand-action-hover">{t(o.availability === 'unavailable' ? 'decisionModal.seeWhy' : 'decisionModal.reviewConsequences')}<ArrowRight aria-hidden className="size-4" /></span>
       </button>
     </li>
   );
   return (
-    <div className="mt-4 space-y-4">
-      {recommended && (
-        <section>
-          <h2 className="text-[14px] font-semibold text-ink-secondary">{t('decisionModal.recommended')}</h2>
-          <ul className="mt-1.5">{row(recommended)}</ul>
-        </section>
-      )}
-      {others.length > 0 && (
-        <section>
-          <h2 className="text-[14px] font-semibold text-ink-secondary">{t('decisionModal.otherResponses')}</h2>
-          <ul className="mt-1.5 space-y-1.5">{others.map(row)}</ul>
-        </section>
-      )}
+    <div className="mt-6">
+      <h2 className="text-[18px] font-semibold">{t('decisionModal.chooseNext')}</h2>
+      <p className="mt-1 text-[14px] text-ink-secondary">{t('decisionModal.chooseHint')}</p>
+      <ul className="mt-4 grid gap-3 sm:grid-cols-2">{(recommended ? [recommended, ...others] : others).map(row)}</ul>
     </div>
   );
 }
@@ -233,14 +244,14 @@ function OptionDetail({
   const isMonitor = option.kind === 'monitor';
   return (
     <div className="mt-4">
-      <button type="button" onClick={onBack} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-brand-action-hover hover:underline">
+      <button type="button" disabled={submitting} onClick={onBack} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-brand-action-hover hover:underline focus-visible:outline-3 focus-visible:outline-focus">
         <ArrowLeft aria-hidden className="size-4" />
         {t('decisionModal.backToOptions')}
       </button>
       <Card className="mt-3">
         <h2 className="text-[18px] font-semibold">{r(option.label)}</h2>
         <div className="mt-2">
-          <StatusBadge tone={option.availability === 'available' ? 'success' : option.availability === 'manual' ? 'neutral' : 'danger'} label={t(AVAILABILITY_LABEL_KEY[option.availability])} />
+          <p className="text-[14px] text-ink-secondary">{t(optionHelpKey(option))}</p>
         </div>
         {option.unavailableReason && (
           <Notice tone="danger" className="mt-3">
@@ -261,6 +272,12 @@ function OptionDetail({
                 <li key={i}>{r(c)}</li>
               ))}
             </ul>
+          </section>
+        )}
+        {(option.kind === 'manual' || option.kind === 'review' || option.key === 'verify_owner') && (
+          <section className="mt-4 rounded-[12px] bg-canvas-warm p-4">
+            <h3 className="text-[15px] font-semibold">{t('decisionModal.yourNextStep')}</h3>
+            <p className="mt-2 text-[15px] leading-relaxed">{t(option.key === 'disconnect' ? 'decisionModal.disconnectSteps' : option.key === 'verify_owner' ? 'decisionModal.verifySteps' : 'decisionModal.reviewSteps')}</p>
           </section>
         )}
         {option.scope && (
