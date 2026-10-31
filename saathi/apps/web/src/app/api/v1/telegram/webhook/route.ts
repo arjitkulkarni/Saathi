@@ -23,7 +23,15 @@ export async function POST(req: Request) {
   if (!e.TELEGRAM_BOT_TOKEN || !e.TELEGRAM_WEBHOOK_SECRET) return NextResponse.json({ error: 'not configured' }, { status: 503 });
   if (!secretOk(req.headers.get('x-telegram-bot-api-secret-token'), e.TELEGRAM_WEBHOOK_SECRET)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   const update = JSON.parse((await req.text()).slice(0, 64 * 1024));
-  const r = await handleTelegramUpdate(pool(), update);
+  let r: Awaited<ReturnType<typeof handleTelegramUpdate>>;
+  try {
+    r = await handleTelegramUpdate(pool(), update);
+  } catch (err) {
+    // Never let an unexpected failure here surface as a 500: Telegram would retry and the
+    // chat would just see silence either way, so log server-side and acknowledge the update.
+    console.error('telegram webhook: handleTelegramUpdate failed', err);
+    return NextResponse.json({ ok: true });
+  }
   if (!r) return NextResponse.json({ ok: true });
   let reply = r.reply;
   if (r.report) {

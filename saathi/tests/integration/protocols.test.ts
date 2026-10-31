@@ -172,6 +172,17 @@ describe('Telegram linking and staff reporting (Ph12 gate)', () => {
     const unlinked = await handleTelegramUpdate(appPool, { update_id: base + 4, message: { message_id: 1, chat: { id: 777999, type: 'private' }, text: 'hi' } });
     expect(unlinked?.reply).toMatch(/not linked/);
   });
+
+  it('refuses to link a chat already actively linked to a different account, without crashing', async () => {
+    const upd = (id: number, chatId: number, text: string) => ({ update_id: id, message: { message_id: id, chat: { id: chatId, type: 'private' }, text } });
+    const chatId = 778001 + Math.floor(Math.random() * 1000);
+    const base = 910000 + Math.floor(Math.random() * 1000);
+    const first = await tx(F.staffActor, (db) => createTelegramLinkCode(db, F.staffActor, 'saathi_test_bot'));
+    expect((await handleTelegramUpdate(appPool, upd(base, chatId, `/start ${first.code}`)))?.reply).toMatch(/^Linked/);
+    const second = await tx(F.northOwner, (db) => createTelegramLinkCode(db, F.northOwner, 'saathi_test_bot'));
+    const r = await handleTelegramUpdate(appPool, upd(base + 1, chatId, `/start ${second.code}`));
+    expect(r?.reply).toMatch(/already linked to a different Saathi account/);
+  });
 });
 
 describe('scam campaign grouping (Ph06 preset)', () => {
