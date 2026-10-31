@@ -236,3 +236,18 @@ export async function explainIncident(cfg: AiConfig, input: { language: string; 
   ].join('\n');
   return dispatchText(cfg, 'incident_explanation', ExplanationJsonSchema, ExplanationSchema, BOUNDARY, body, 2000);
 }
+
+export async function explainScam(cfg: AiConfig, input: { language: string; text: string; verdictLabel: string; reasons: string[]; uncertainty: string[] }) {
+  if (!aiAvailable(cfg)) return null;
+  const body = [
+    `Write in ${input.language}. Explain in at most four sentences why these findings matter. Keep the stated verdict "${input.verdictLabel}"; never upgrade it to safe or downgrade uncertainty.`,
+    'Findings from fixed rules:',
+    ...input.reasons.map((r) => `- ${r}`),
+    'Uncertainty:',
+    ...input.uncertainty.map((r) => `- ${r}`),
+    '<untrusted_content>',
+    input.text.slice(0, 4000),
+    '</untrusted_content>',
+  ].join('\n');
+  return dispatchText(cfg, 'scam_explanation', ScamExplanationJsonSchema, ScamExplanationSchema, BOUNDARY, body, 1500);
+}
