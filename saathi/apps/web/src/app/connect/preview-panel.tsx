@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { AlertTriangle, KeyRound, ShieldAlert, ShieldOff } from 'lucide-react';
-import { Button, Card, SectionTitle } from '@/components/ui/primitives';
+import { Button, Card, Input, Label, SectionTitle } from '@/components/ui/primitives';
 import { Notice } from '@/components/shared/states';
 import { ApiError, apiSend } from '@/lib/api';
 import { useI18n } from '@/lib/i18n-client';
@@ -14,23 +14,50 @@ const SCENARIOS: { key: Scenario; icon: typeof ShieldAlert }[] = [
   { key: 'password_guessing', icon: KeyRound },
 ];
 
-export function PreviewPanel({ code }: { code: string }) {
+export function PreviewPanel() {
   const { t } = useI18n();
+  const id = useId();
+  const [code, setCode] = useState<string | null>(null);
+  const [input, setInput] = useState('');
   const [busy, setBusy] = useState<Scenario | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<Scenario[]>([]);
 
   async function run(scenario: Scenario) {
+    if (!code) return;
     setBusy(scenario);
     setError(null);
     try {
-      await apiSend(`/api/v1/connect/${code}`, 'POST', { scenario });
+      await apiSend(`/api/v1/connect/${encodeURIComponent(code)}`, 'POST', { scenario });
       setDone((d) => [...d, scenario]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('states.errorBody'));
     } finally {
       setBusy(null);
     }
+  }
+
+  if (!code) {
+    return (
+      <Card className="w-full max-w-[480px]">
+        <SectionTitle>{t('connect.enterTitle')}</SectionTitle>
+        <p className="mt-2 text-[15px] leading-relaxed text-ink-secondary">{t('connect.enterBody')}</p>
+        <form
+          className="mt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const v = input.trim();
+            if (v) setCode(v);
+          }}
+        >
+          <Label htmlFor={id}>{t('connect.codeLabel')}</Label>
+          <Input id={id} value={input} onChange={(e) => setInput(e.target.value)} placeholder="XXXX-XXXX-XXXX" required minLength={8} className="font-mono uppercase" />
+          <Button type="submit" className="mt-4" disabled={input.trim().length < 8}>
+            {t('connect.continue')}
+          </Button>
+        </form>
+      </Card>
+    );
   }
 
   return (

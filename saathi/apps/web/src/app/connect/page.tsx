@@ -6,10 +6,10 @@ import { PreviewPanel } from './preview-panel';
 
 export const metadata = { title: 'Saathi — attack preview' };
 
-// Public, unauthenticated preview: the enrollment code in the URL is itself the one-use
-// credential (see runAttackPreview in @saathi/db). No Saathi account needed to view this.
-export default async function ConnectPage(props: PageProps<'/connect/[code]'>) {
-  const { code } = await props.params;
+// Public, unauthenticated preview. The enrollment code is typed in here rather than carried
+// in the URL — it is itself the one-use credential (see runAttackPreview in @saathi/db). No
+// Saathi account needed to view this.
+export default async function ConnectPage() {
   const locale = await requestLocale();
   return (
     <I18nProvider value={{ locale, vocabulary: 'generic', timezone: 'Asia/Kolkata' }}>
@@ -17,7 +17,7 @@ export default async function ConnectPage(props: PageProps<'/connect/[code]'>) {
         <Link href="/" className="mb-8" aria-label="Saathi home">
           <Wordmark size="lg" />
         </Link>
-        <PreviewPanel code={code} />
+        <PreviewPanel />
       </main>
     </I18nProvider>
   );

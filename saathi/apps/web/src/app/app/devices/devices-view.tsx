@@ -3,18 +3,14 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Dialog } from 'radix-ui';
-import { ChevronRight, Download, Monitor, Plus, X } from 'lucide-react';
+import { ChevronRight, Monitor, Plus, X } from 'lucide-react';
 import type { DeviceCardDTO } from '@saathi/contracts';
 import { Button, FieldError, Hint, Input, Label } from '@/components/ui/primitives';
 import { EmptyState, Notice } from '@/components/shared/states';
 import { StatusBadge, freshnessTone } from '@/components/shared/status';
-import { CopyField, Time } from '@/components/shared/client';
+import { Time } from '@/components/shared/client';
 import { ApiError, apiSend, usePolling } from '@/lib/api';
 import { useI18n } from '@/lib/i18n-client';
-
-// Standalone Windows executable (no Node.js install needed); built with
-// scripts/build-agent-exe.mjs and published as a GitHub release asset — see docs/agent.md.
-const AGENT_DOWNLOAD_URL = 'https://github.com/arjitkulkarni/Saathi/releases/download/agent-v0.1.0/saathi-agent-windows-x64.exe';
 
 export function AddDeviceDialog({ onDone }: { onDone?: () => void }) {
   const { t, time } = useI18n();
@@ -79,20 +75,14 @@ export function AddDeviceDialog({ onDone }: { onDone?: () => void }) {
               <Notice tone="warning" title={t('devices.codeShown', { time: time(code.expiresAt) })}>
                 <p className="mt-1 font-mono text-[22px] font-semibold tracking-[0.12em]">{code.code}</p>
               </Notice>
-              <a href={AGENT_DOWNLOAD_URL} className="inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-border-control bg-surface px-3 text-[15px] font-medium hover:bg-canvas-warm" download>
-                <Download aria-hidden className="size-5" />
-                {t('devices.downloadAgent')}
-              </a>
-              <Hint>{t('devices.smartScreenNote')}</Hint>
-              <Hint>{t('devices.installSteps')}</Hint>
-              <CopyField label="command" value={`.\\saathi-agent-windows-x64.exe --server ${typeof window !== 'undefined' ? window.location.origin : ''} --code ${code.code} --observe-only`} />
+              <Hint>{t('devices.connectSteps')}</Hint>
               <Link
-                href={`/connect/${code.code}`}
+                href="/connect"
                 target="_blank"
                 rel="noopener"
-                className="inline-flex min-h-11 items-center text-[14px] font-medium text-brand-action-hover underline underline-offset-4 hover:no-underline"
+                className="inline-flex min-h-11 items-center text-[15px] font-medium text-brand-action-hover underline underline-offset-4 hover:no-underline"
               >
-                {t('devices.previewLink')}
+                {typeof window !== 'undefined' ? window.location.origin : ''}/connect
               </Link>
             </div>
           )}
