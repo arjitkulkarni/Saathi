@@ -828,6 +828,7 @@ export const kn = {
       close: 'Close',
       loadFailed: 'Could not load the chain right now.',
       empty: 'Nothing was recorded before this checkpoint.',
+      hashNote: 'Each block shows its own fingerprint. The label on an arrow is the fingerprint the next block had to carry forward — change anything earlier and every block after it would stop matching.',
     },
     entry: {
       organization_created: 'The organization was set up in Saathi.',
