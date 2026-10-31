@@ -103,3 +103,81 @@ function recordOutcome(provider: string, cap: Capability, ok: boolean) {
 export function __resetAiState() {
   breaker.clear();
 }
+
+// --- Provider calls ------------------------------------------------------------------------
+
+type XaiContent = string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+
+async function xaiParse<T extends z.ZodType>(
+  cfg: AiConfig,
+  cap: Capability,
+  model: string,
+  schemaName: string,
+  jsonSchema: unknown,
+  schema: T,
+  system: string,
+  userContent: XaiContent,
+  maxTokens: number,
+): Promise<z.infer<T> | null> {
+  const url = `${cfg.baseUrl ?? XAI_BASE_URL}/chat/completions`;
+  const body = JSON.stringify({
+    model,
+    max_tokens: maxTokens,
+    temperature: 0,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: userContent },
+    ],
+    response_format: { type: 'json_schema', json_schema: { name: schemaName, schema: jsonSchema, strict: true } },
+    store: false, // do not retain the request/response server-side
+  });
+  // One retry on transient failures (timeout, network, 429, 5xx); none on 4xx.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey}` },
+        body,
+        signal: AbortSignal.timeout(cfg.timeoutMs ?? 20_000),
+      });
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt === 0) continue;
+        recordOutcome(cfg.provider, cap, false);
+        return null;
+      }
+      if (!res.ok) {
+        // 4xx: bad model, unsupported capability, or auth — not retried.
+        recordOutcome(cfg.provider, cap, false);
+        return null;
+      }
+      const data = (await res.json().catch(() => null)) as { choices?: { finish_reason?: string; message?: { content?: unknown; refusal?: unknown } }[] } | null;
+      const choice = data?.choices?.[0];
+      const message = choice?.message;
+      if (!message || choice?.finish_reason === 'length' || message.refusal) {
+        recordOutcome(cfg.provider, cap, false); // refusal, truncation or empty choice
+        return null;
+      }
+      const content = message.content;
+      const raw = typeof content === 'string' ? content : Array.isArray(content) ? content.map((p) => (p as { text?: string })?.text ?? '').join('') : '';
+      if (!raw.trim()) {
+        recordOutcome(cfg.provider, cap, false);
+        return null;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        recordOutcome(cfg.provider, cap, false); // malformed JSON
+        return null;
+      }
+      const checked = schema.safeParse(parsed);
+      recordOutcome(cfg.provider, cap, checked.success); // schema violation counts as failure
+      return checked.success ? checked.data : null;
+    } catch {
+      if (attempt === 0) continue; // timeout / network error
+      recordOutcome(cfg.provider, cap, false);
+      return null;
+    }
+  }
+  return null;
+}
