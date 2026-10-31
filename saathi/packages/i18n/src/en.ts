@@ -297,7 +297,7 @@ export const en = {
     viewHealth: 'View health',
     metrics: {
       needsAttention: 'Need a decision',
-      devicesOnline: 'Devices online',
+      devicesCurrent: 'Devices current',
       protectionChecks: 'Protection checks',
       sourceStatus: 'Source status',
       sourceAllConnected: 'All connected',

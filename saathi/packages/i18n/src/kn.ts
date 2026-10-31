@@ -302,7 +302,7 @@ export const kn = {
     viewHealth: 'ಆರೋಗ್ಯ ನೋಡಿ',
     metrics: {
       needsAttention: 'Need a decision',
-      devicesOnline: 'Devices online',
+      devicesCurrent: 'Devices current',
       protectionChecks: 'Protection checks',
       sourceStatus: 'Source status',
       sourceAllConnected: 'All connected',

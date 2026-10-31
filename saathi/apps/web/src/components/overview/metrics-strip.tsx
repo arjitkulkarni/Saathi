@@ -14,7 +14,6 @@ const toneText = (tone: Tone) => TONE[tone].split(' ').find((cls) => cls.startsW
 // new thresholds are invented here beyond "zero is good, nonzero of a bad thing is not."
 export function MetricsStrip({ o, t }: { o: OverviewDTO; t: (key: string, params?: Record<string, unknown>) => string }) {
   const c = o.coverage;
-  const online = c.devices.total - c.devices.offline;
   const h = o.health;
 
   const sourceStatus: { value: string; tone: Tone } = !c.hasAnySource
@@ -35,11 +34,15 @@ export function MetricsStrip({ o, t }: { o: OverviewDTO; t: (key: string, params
       href: '/app/incidents?tab=needs_attention',
     },
     {
-      key: 'devicesOnline',
+      // "Current" matches the navbar (nav.coverageLink) and overview.devicesLine, both of which
+      // count only fresh devices — a stale-but-connected device is not treated as current there
+      // either, so this tile must not use a looser "not offline" definition that would disagree
+      // with the number shown right above it in the navbar.
+      key: 'devicesCurrent',
       icon: Monitor,
-      value: c.devices.total > 0 ? `${online}/${c.devices.total}` : '—',
-      label: t('overview.metrics.devicesOnline'),
-      tone: c.devices.total === 0 ? 'neutral' : c.devices.offline > 0 ? 'warning' : 'success',
+      value: c.devices.total > 0 ? `${c.devices.fresh}/${c.devices.total}` : '—',
+      label: t('overview.metrics.devicesCurrent'),
+      tone: c.devices.total === 0 ? 'neutral' : c.devices.fresh === c.devices.total ? 'success' : 'warning',
       href: '/app/devices',
     },
     {

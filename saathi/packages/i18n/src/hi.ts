@@ -303,7 +303,7 @@ const catalogue: Strings<Messages> = {
     viewHealth: 'सुरक्षा स्थिति देखें',
     metrics: {
       needsAttention: 'Need a decision',
-      devicesOnline: 'Devices online',
+      devicesCurrent: 'Devices current',
       protectionChecks: 'Protection checks',
       sourceStatus: 'Source status',
       sourceAllConnected: 'All connected',
