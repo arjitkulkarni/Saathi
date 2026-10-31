@@ -114,6 +114,24 @@ type AiEnvFields = {
 /** The default OpenAI-compatible endpoint for xAI (https://docs.x.ai). */
 export const XAI_BASE_URL = 'https://api.x.ai/v1';
 
+/**
+ * Build the AI configuration from a parsed environment. The provider selects which key is used;
+ * xAI never falls back to the Anthropic key and vice versa. Absent configuration yields an
+ * AiConfig whose availability checks are simply false — the core app still runs.
+ */
+export function aiConfigFromEnv(e: AiEnvFields, timeoutMs?: number): AiConfig {
+  const provider: AiProvider = e.AI_PROVIDER ?? 'xai';
+  const apiKey = provider === 'xai' ? e.XAI_API_KEY : e.ANTHROPIC_API_KEY;
+  return {
+    provider,
+    apiKey,
+    model: e.AI_MODEL,
+    visionModel: e.AI_VISION_MODEL,
+    baseUrl: provider === 'xai' ? XAI_BASE_URL : undefined,
+    timeoutMs,
+  };
+}
+
 /** Pinned public key registry encoded as JSON: [{"keyId":"...","publicKeyHex":"..."}] */
 export const PublicKeyRegistry = z.array(
   z.object({ keyId: z.string(), publicKeyHex: z.string().regex(/^[0-9a-f]{64}$/), validFrom: z.string().optional(), retiredAt: z.string().optional() }),
