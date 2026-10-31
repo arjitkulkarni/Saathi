@@ -16,6 +16,17 @@ Each state directory is bound to the mode it enrolled in, so use a separate `--s
 
 ## Install and run
 
+### Standalone executable (recommended for an end-user machine)
+
+The Devices → Add device dialog links directly to a packaged `.exe` — no Node.js, pnpm or git clone needed on the target machine. It's a Node Single Executable Application (observe-only/full mode use `apps/agent/src/sea-entry.ts` as the entry point; see [#build-the-standalone-executable](#build-the-standalone-executable) below for how it's built).
+
+1. In the console, open **Devices → Add device**, name the computer, generate an enrollment code, and download the agent from the link shown.
+2. On the computer, open a terminal where the file was saved and run the copy-paste command the dialog shows (it fills in the server URL and code).
+
+It's **unsigned** (no code-signing certificate yet), so Windows SmartScreen will warn on first run — choose "More info" then "Run anyway". `--simulate` mode isn't meaningful for this path (it needs a real machine); use the pnpm path below for that.
+
+### From source (developers, `--simulate`, or the lock helper)
+
 Prerequisites: Windows 10/11, Node.js 22+ and pnpm, and the Saathi workspace checked out (`pnpm install`).
 
 1. In the console, open **Devices → Add device**, name the computer and generate an enrollment code. The code works once and expires after 15 minutes.
@@ -134,6 +145,35 @@ Run `apps\agent\windows-helper\bin\SaathiLockHelper.exe` **in the interactive us
 - accepts only `LOCK <hex nonce>`
 - replies `LOCKED <nonce> <sessionId>` after observing the lock notification
 - otherwise replies `NOT_OBSERVED <nonce>`
+
+## Build the standalone executable
+
+```powershell
+node scripts/build-agent-exe.mjs   # Windows only; embeds the local node.exe
+```
+
+What it does (see [scripts/build-agent-exe.mjs](../scripts/build-agent-exe.mjs)):
+1. Bundles `apps/agent/src/sea-entry.ts` into a single CommonJS file with esbuild.
+2. Generates a Node [Single Executable Application](https://nodejs.org/api/single-executable-applications.html) preparation blob (`node --experimental-sea-config`).
+3. Copies the local `node.exe` and injects the blob into it with `postject` (an `@saathi/agent` devDependency).
+4. Writes `apps/agent/dist/saathi-agent-windows-x64.exe` (~90 MB; gitignored, not committed).
+
+`sea-entry.ts` exists because a packaged executable has no script path in `process.argv`, so `src/index.ts`'s normal `import.meta.url === process.argv[1]` "am I the main module" guard never matches inside it; `sea-entry.ts` calls `run()` unconditionally instead. It also avoids `process.exit()` in favor of setting `process.exitCode` — forcing immediate termination while a `fetch` `AbortSignal.timeout()` handle is still closing crashed the packaged binary with a native libuv assertion on Windows.
+
+**Publishing a new build:** the exe isn't committed to the repo (too large, and binaries don't belong in git history). Publish it as a GitHub release asset and the download link in the Add Device dialog ([`AGENT_DOWNLOAD_URL`](../apps/web/src/app/app/devices/devices-view.tsx)) will pick it up automatically, as long as the tag matches:
+
+```sh
+gh release create agent-v0.1.0 apps/agent/dist/saathi-agent-windows-x64.exe \
+  --title "Saathi Windows agent v0.1.0" \
+  --notes "Standalone Windows agent executable (no Node.js install required). Unsigned build — Windows SmartScreen will warn on first run."
+```
+
+To ship a new version: bump `AGENT_VERSION` in `src/index.ts`, rebuild, and create a new tag/release (`agent-v0.1.1`, ...), then update `AGENT_DOWNLOAD_URL` to match.
+
+**Known limitations of this "quick" build (not yet a proper installer):**
+- Unsigned — Windows SmartScreen warns on every first run. A real rollout would need a code-signing certificate (`signtool sign`).
+- No installer wizard, no auto-start on login, no uninstaller, no auto-update. The operator runs it manually from a terminal each time (or sets up their own Scheduled Task / Startup shortcut).
+- Built only on Windows, for Windows x64. Single Executable Applications embed the Node binary used to build them, so this must run on a Windows machine to produce a Windows build.
 
 ## Uninstall
 

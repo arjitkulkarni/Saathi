@@ -183,7 +183,9 @@ export async function run(args: Args) {
   log('agent stopped');
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// import.meta.url is empty when this module is bundled to CommonJS for the packaged
+// executable (see sea-entry.ts), so guard it before calling fileURLToPath.
+if (process.argv[1] && import.meta.url && fileURLToPath(import.meta.url) === process.argv[1]) {
   let args: Args;
   try {
     args = parseArgs(process.argv.slice(2));

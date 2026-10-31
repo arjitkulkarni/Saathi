@@ -19,5 +19,7 @@
     "@saathi/evidence": "workspace:*",
     "zod": "^4.1.12"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "postject": "1.0.0-alpha.6"
+  }
 }
