@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { aiAvailable, createScamCheck, listOwnScamChecks } from '@saathi/db';
+import { aiConfigured, createScamCheck, listOwnScamChecks } from '@saathi/db';
 import { actorTx } from '@/server/actor';
 import { readJson, userRoute } from '@/server/api';
-import { env } from '@/server/env';
+import { aiConfig, env } from '@/server/env';
 
 export const GET = userRoute(async ({ ctx }) => actorTx(ctx, (db) => listOwnScamChecks(db, ctx.actor)));
 
@@ -27,7 +27,7 @@ export const POST = userRoute(
         db,
         ctx.actor,
         { ...body, attachmentExpiresAt: body.attachmentRef ? new Date(Date.now() + 24 * 3600 * 1000) : null },
-        { fingerprintSecret: e.SCAM_FINGERPRINT_SECRET, aiConfigured: aiAvailable({ apiKey: e.ANTHROPIC_API_KEY, model: e.AI_MODEL }), textRetentionHours: 24 * 30 },
+        { fingerprintSecret: e.SCAM_FINGERPRINT_SECRET, aiConfigured: aiConfigured(aiConfig()), textRetentionHours: 24 * 30 },
       ),
     );
   },
