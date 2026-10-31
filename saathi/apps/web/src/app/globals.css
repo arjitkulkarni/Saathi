@@ -1,0 +1,285 @@
+@import "tailwindcss";
+
+/* Saathi design tokens (frontend.md §3). Warm cream, near-black ink, restrained coral. */
+@theme {
+  --color-canvas: #ffffff;
+  --color-canvas-warm: #f8f6f2;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f1efeb;
+  --color-ink: #242420;
+  --color-ink-secondary: #60605a;
+  --color-brand-art: #f65b3a;
+  --color-brand-action: #be3e24;
+  --color-brand-action-hover: #a5331d;
+  --color-brand-soft: #fcebe5;
+  --color-border-subtle: #e4e0d9;
+  --color-border-control: #8a877f;
+  --color-focus: #182e54;
+  --color-success-ink: #176344;
+  --color-success-soft: #eaf5ee;
+  --color-warning-ink: #8a5000;
+  --color-warning-soft: #fff4d8;
+  --color-danger-ink: #a52b28;
+  --color-danger-soft: #fdedec;
+  --color-neutral-ink: #68665f;
+  --color-neutral-soft: #f1efeb;
+
+  --font-sans: var(--font-inter), var(--font-kannada), var(--font-devanagari), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-display: Georgia, "Times New Roman", var(--font-kannada), var(--font-devanagari), serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+
+  --radius-card: 16px;
+  --radius-stage: 22px;
+  --radius-control: 11px;
+  --shadow-rest: 0 2px 8px rgb(36 36 32 / 4%);
+  --shadow-raised: 0 12px 32px rgb(36 36 32 / 8%);
+  --ease-saathi: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root {
+  --saathi-duration-fast: 140ms;
+  --saathi-duration-panel: 180ms;
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+}
+
+/* Regional scripts: never force Latin tracking or tight line heights. */
+:lang(kn),
+:lang(hi) {
+  line-height: 1.75;
+  letter-spacing: normal;
+}
+:lang(kn) h1,
+:lang(kn) h2,
+:lang(hi) h1,
+:lang(hi) h2 {
+  line-height: 1.4;
+}
+
+/* Long regional words in large headings wrap instead of overflowing narrow screens. */
+h1,
+h2,
+h3 {
+  overflow-wrap: break-word;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+[data-saathi-interactive] {
+  transition:
+    color var(--saathi-duration-fast) var(--ease-saathi),
+    background-color var(--saathi-duration-fast) var(--ease-saathi),
+    border-color var(--saathi-duration-fast) var(--ease-saathi),
+    box-shadow var(--saathi-duration-fast) var(--ease-saathi);
+}
+
+[data-saathi-interactive]:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* One restrained emphasis for newly received items / real status changes. */
+@keyframes saathi-arrive {
+  from {
+    box-shadow: 0 0 0 2px var(--color-brand-art);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.saathi-arrive {
+  animation: saathi-arrive 300ms var(--ease-saathi) 1;
+}
+
+@keyframes saathi-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.saathi-fade {
+  animation: saathi-fade 200ms var(--ease-saathi) both;
+}
+
+@keyframes saathi-check {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.saathi-check {
+  animation: saathi-check 180ms var(--ease-saathi) both;
+}
+
+@keyframes saathi-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+.saathi-pending {
+  animation: saathi-pulse 1.6s ease-in-out infinite;
+}
+
+/* Landing page motion. Content is always present in the HTML; motion only eases it in. */
+@keyframes saathi-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.saathi-rise {
+  animation: saathi-rise 600ms var(--ease-saathi) both;
+}
+
+/* Set by RevealOnScroll on below-the-fold blocks only after JavaScript runs. */
+.saathi-pre {
+  opacity: 0;
+}
+
+@keyframes saathi-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.saathi-bar {
+  transform-origin: bottom;
+  animation: saathi-grow-y 520ms var(--ease-saathi) both;
+}
+
+@keyframes saathi-shrink-x {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0.08);
+  }
+}
+.saathi-countdown {
+  transform-origin: left;
+  animation: saathi-shrink-x 9s linear both;
+}
+
+@keyframes saathi-fill-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.saathi-progress {
+  transform-origin: left;
+  animation: saathi-fill-x var(--saathi-frame, 3200ms) linear both;
+}
+
+/* Data moving between architecture blocks. */
+@keyframes saathi-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.saathi-flow {
+  stroke-dasharray: 6 6;
+  animation: saathi-flow 1.1s linear infinite;
+}
+
+/* Soft drifting glow behind the hero. Decorative only. */
+@keyframes saathi-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3%, 4%, 0) scale(1.06);
+  }
+}
+.saathi-glow {
+  animation: saathi-drift 16s ease-in-out infinite;
+}
+
+/* Journey connector draws as the section scrolls into view, where supported. */
+@supports (animation-timeline: view()) {
+  .saathi-draw {
+    transform-origin: left;
+    animation: saathi-fill-x linear both;
+    animation-timeline: view();
+    animation-range: entry 10% cover 45%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .saathi-pre {
+    opacity: 1;
+  }
+  .saathi-flow,
+  .saathi-glow,
+  .saathi-draw,
+  .saathi-countdown,
+  .saathi-progress {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .saathi-pending {
+    animation: none;
+  }
+  [data-saathi-interactive]:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Anchor targets clear the sticky header. */
+[id] {
+  scroll-margin-top: 88px;
+}
+
+details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
