@@ -279,7 +279,7 @@ export type CheckpointDTO = {
 
 export type CheckpointGraphDTO = {
   checkpoint: { id: string; seq: number; createdAt: string; anchor: AnchorStatusDTO };
-  entries: { id: string; seq: number; occurredAt: string; summary: Msg }[];
+  entries: { id: string; seq: number; occurredAt: string; summary: Msg; hash: string; prevHash: string }[];
 };
 
 export type AnchorStatusDTO = {
