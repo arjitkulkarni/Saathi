@@ -10,6 +10,8 @@ import { cn } from '@/lib/cn';
 
 type Entry = CheckpointGraphDTO['entries'][number];
 
+const short = (hash: string) => `${hash.slice(0, 6)}…${hash.slice(-4)}`;
+
 export function ChainGraph({ checkpointId }: { checkpointId: string }) {
   const { t, r, time } = useI18n();
   const [open, setOpen] = useState(false);
@@ -42,6 +44,7 @@ export function ChainGraph({ checkpointId }: { checkpointId: string }) {
         <Card className="mt-4">
           <h2 className="text-[16px] font-semibold">{t('evidence.graph.title')}</h2>
           <p className="mt-1 text-[14px] text-ink-secondary">{t('evidence.graph.intro')}</p>
+          {data && data.entries.length > 0 && <p className="mt-1 text-[13px] text-ink-secondary">{t('evidence.graph.hashNote')}</p>}
           {loading && (
             <p className="mt-4 flex items-center gap-2 text-[14px] text-ink-secondary">
               <Loader2 aria-hidden className="size-4 animate-spin" />
@@ -56,20 +59,26 @@ export function ChainGraph({ checkpointId }: { checkpointId: string }) {
           {data && data.entries.length === 0 && <p className="mt-4 text-[14px] text-ink-secondary">{t('evidence.graph.empty')}</p>}
           {data && data.entries.length > 0 && (
             <div className="mt-4 overflow-x-auto">
-              <div className="flex min-w-max items-center gap-1 pb-2">
+              <div className="flex min-w-max items-center pb-2">
                 {data.entries.map((e, i) => (
-                  <div key={e.id} className="flex items-center gap-1">
-                    {i > 0 && <span aria-hidden className="h-px w-4 bg-border-control" />}
+                  <div key={e.id} className="flex items-center">
+                    {i > 0 && (
+                      <div className="flex w-14 shrink-0 flex-col items-center gap-0.5" aria-hidden>
+                        <span className="h-px w-full bg-border-control" />
+                        <span className="font-mono text-[10px] text-ink-secondary">{short(e.prevHash)}</span>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSelected(e)}
                       className={cn(
-                        'flex size-14 shrink-0 items-center justify-center rounded-[10px] border text-[12px] font-medium tabular transition-colors',
+                        'flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-[10px] border px-3 py-2 text-[12px] font-medium transition-colors',
                         selected?.id === e.id ? 'border-ink bg-ink text-surface' : 'border-border-control bg-canvas-warm hover:bg-surface-subtle',
                       )}
                       title={t('evidence.graph.node', { seq: e.seq })}
                     >
-                      #{e.seq}
+                      <span className="tabular">#{e.seq}</span>
+                      <span className={cn('font-mono text-[10px]', selected?.id === e.id ? 'text-surface/70' : 'text-ink-secondary')}>{short(e.hash)}</span>
                     </button>
                   </div>
                 ))}
