@@ -1,13 +1,14 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { DEVICE_HEADERS, deviceSigningString, SaathiError } from '../../packages/contracts/src';
 import { closePools, withTx } from '../../packages/db/src/client';
+import { notifications as notificationsTable, telegramLinks as telegramLinksTable } from '../../packages/db/src/schema';
 import { approvePreview, createPreview, getActionDetail } from '../../packages/db/src/services/decisions';
 import { createEnrollmentCode, enrollDevice, ingestEvents, pollCommands, recordCommandResult, recordHeartbeat, verifyDeviceRequest } from '../../packages/db/src/services/devices';
 import { buildBatch, submitBatch } from '../../packages/db/src/services/anchor';
 import { createCheckpoint, signPendingIntents } from '../../packages/db/src/services/evidence';
 import { createScamCheck, reportScamCheck } from '../../packages/db/src/services/scam';
-import { createTelegramLinkCode, handleTelegramUpdate, telegramStatus } from '../../packages/db/src/services/telegram';
+import { createTelegramLinkCode, deliverNotification, handleTelegramUpdate, telegramStatus } from '../../packages/db/src/services/telegram';
 import { createWorker } from '../../apps/worker/src/index';
 import { appPool, fixtures, idem, ownerClient, tx } from './helpers';
 
@@ -195,6 +196,38 @@ describe('Telegram linking and staff reporting (Ph12 gate)', () => {
     await tx(F.owner, (db) => createTelegramLinkCode(db, F.owner, 'saathi_test_bot'));
     const status = await tx(F.owner, (db) => telegramStatus(db, F.owner));
     expect(status.linked).toBe(true);
+  });
+
+  it('delivers through the active link even with stale legacy pending rows for the same user', async () => {
+    const upd = (id: number, chatId: number, text: string) => ({ update_id: id, message: { message_id: id, chat: { id: chatId, type: 'private' }, text } });
+    const chatId = 781001 + Math.floor(Math.random() * 1000);
+    const base = 940000 + Math.floor(Math.random() * 1000);
+    const linked = await tx(F.staffActor, (db) => createTelegramLinkCode(db, F.staffActor, 'saathi_test_bot'));
+    expect((await handleTelegramUpdate(appPool, upd(base, chatId, `/start ${linked.code}`)))?.reply).toMatch(/^Linked/);
+
+    const notifId = await tx(F.staffActor, async (db) => {
+      // Stale, never-consumed rows inserted directly (bypassing createTelegramLinkCode's own
+      // cleanup) reproduce rows already sitting in production from before that cleanup existed —
+      // several of them, matching the repeated "Create link code" clicks seen live.
+      for (let i = 0; i < 5; i++) {
+        await db.insert(telegramLinksTable).values({ orgId: F.staffActor.orgId, userId: F.staffActor.userId, codeHash: randomBytes(16).toString('hex'), codeExpiresAt: new Date(Date.now() + 60_000) });
+      }
+      const [n] = await db
+        .insert(notificationsTable)
+        .values({ orgId: F.staffActor.orgId, userId: F.staffActor.userId, channel: 'telegram', kind: 'incident', text: { key: 'notify.device_needs_review', params: {} }, dedupeKey: `test:${base}` })
+        .returning({ id: notificationsTable.id });
+      return n.id as string;
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await tx(F.staffActor, (db) => deliverNotification(db, F.staffActor.orgId, notifId, { token: 'test-token', appOrigin: 'https://example.test', render: () => 'test message' }));
+      expect(result).toBe('sent');
+      expect(fetchMock).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('treats a second code from the SAME already-linked account as a no-op, not a conflict', async () => {

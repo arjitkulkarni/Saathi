@@ -109,7 +109,7 @@ export async function deliverNotification(db: Db, orgId: string, notificationId:
     await db.update(notifications).set({ status: 'unavailable', lastError: 'Telegram bot token is not configured.' }).where(eq(notifications.id, n.id));
     return 'unavailable';
   }
-  const [link] = await db.select().from(telegramLinks).where(and(eq(telegramLinks.orgId, orgId), eq(telegramLinks.userId, n.userId), isNull(telegramLinks.unlinkedAt)));
+  const [link] = await db.select().from(telegramLinks).where(and(eq(telegramLinks.orgId, orgId), eq(telegramLinks.userId, n.userId), isNull(telegramLinks.unlinkedAt), isNotNull(telegramLinks.chatId)));
   if (!link?.chatId) {
     await db.update(notifications).set({ status: 'not_linked', lastError: 'Chat unlinked before delivery.' }).where(eq(notifications.id, n.id));
     return 'not_linked';
