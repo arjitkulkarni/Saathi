@@ -1,0 +1,22 @@
+{
+  "name": "@saathi/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@saathi/contracts": "workspace:*",
+    "@saathi/evidence": "workspace:*",
+    "@saathi/i18n": "workspace:*",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.2"
+  }
+}
