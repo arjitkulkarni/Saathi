@@ -56,7 +56,8 @@ export async function getCheckpoint(db: Db, actor: Actor, id: string) {
 
 /**
  * Chain, for people rather than tools: each signed entry up to this checkpoint as a node
- * with a plain-language gloss, never the raw payload, hash, or signature.
+ * with its hash and the previous node's hash (the real chain link), plus a plain-language
+ * gloss on click. Never the raw payload or signature.
  */
 export async function getCheckpointGraph(db: Db, actor: Actor, id: string): Promise<CheckpointGraphDTO> {
   await requireMembership(db, actor, 'evidence.read');
@@ -70,7 +71,7 @@ export async function getCheckpointGraph(db: Db, actor: Actor, id: string): Prom
     .limit(1);
   const from = prior ? Number(prior.seq) + 1 : 1;
   const rows = await db
-    .select({ seq: evidenceEntries.seq, type: evidenceEntries.type, occurredAt: evidenceEntries.occurredAt, payload: evidenceEntries.payload })
+    .select({ seq: evidenceEntries.seq, type: evidenceEntries.type, occurredAt: evidenceEntries.occurredAt, payload: evidenceEntries.payload, hash: evidenceEntries.hash, prevHash: evidenceEntries.prevHash })
     .from(evidenceEntries)
     .where(and(eq(evidenceEntries.orgId, actor.orgId), gt(evidenceEntries.seq, from - 1), lte(evidenceEntries.seq, r.seq)))
     .orderBy(asc(evidenceEntries.seq))
@@ -78,7 +79,7 @@ export async function getCheckpointGraph(db: Db, actor: Actor, id: string): Prom
   const anchor = await anchorStatusForCheckpoint(db, r.id, r.isSample);
   return {
     checkpoint: { id: r.id, seq: Number(r.seq), createdAt: r.createdAt, anchor },
-    entries: rows.map((e) => ({ id: `${actor.orgId}:${e.seq}`, seq: Number(e.seq), occurredAt: e.occurredAt, summary: summarizeEntry(e.type, e.payload) })),
+    entries: rows.map((e) => ({ id: `${actor.orgId}:${e.seq}`, seq: Number(e.seq), occurredAt: e.occurredAt, summary: summarizeEntry(e.type, e.payload), hash: e.hash, prevHash: e.prevHash })),
   };
 }
 
