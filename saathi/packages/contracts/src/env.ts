@@ -15,6 +15,22 @@ export const CommonEnv = z.object({
   DEMO_MODE: z.enum(['off', 'on']).default('off'),
 });
 
+// In production, a left-at-default APP_ORIGIN would silently build localhost links in things
+// people actually receive (Telegram alerts, invitation emails) — exactly the kind of fabricated-
+// looking success this file's header warns against. Refuse to boot instead of sending them.
+function checkAppOrigin(env: { NODE_ENV: string; APP_ORIGIN: string }, ctx: z.RefinementCtx) {
+  if (env.NODE_ENV !== 'production') return;
+  let host = '';
+  try {
+    host = new URL(env.APP_ORIGIN).hostname;
+  } catch {
+    return; // already rejected by the APP_ORIGIN .url() check above
+  }
+  if (host === 'localhost' || host === '127.0.0.1') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['APP_ORIGIN'], message: 'APP_ORIGIN is still localhost in production. Set it to the real deployed origin (e.g. https://your-app.example) so links sent to people are not broken.' });
+  }
+}
+
 export const WebEnv = CommonEnv.extend({
   BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 characters'),
   BETTER_AUTH_URL: z.string().url(),
@@ -39,7 +55,7 @@ export const WebEnv = CommonEnv.extend({
   ANTHROPIC_API_KEY: optional,
   AI_MODEL: optional,
   AI_VISION_MODEL: optional,
-});
+}).superRefine(checkAppOrigin);
 export type WebEnv = z.infer<typeof WebEnv>;
 
 export const WorkerEnv = CommonEnv.extend({
@@ -76,7 +92,7 @@ export const WorkerEnv = CommonEnv.extend({
   RETENTION_TELEMETRY_DAYS: z.coerce.number().int().min(1).default(7),
   RETENTION_MESSAGE_IMAGE_HOURS: z.coerce.number().int().min(1).default(24),
   RETENTION_REPORT_DAYS: z.coerce.number().int().min(1).default(30),
-});
+}).superRefine(checkAppOrigin);
 export type WorkerEnv = z.infer<typeof WorkerEnv>;
 
 export function parseEnv<T extends z.ZodType>(schema: T, source: Record<string, string | undefined>, label: string): z.infer<T> {
