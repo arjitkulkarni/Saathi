@@ -277,6 +277,11 @@ export type CheckpointDTO = {
   pendingIntents: number;
 };
 
+export type CheckpointGraphDTO = {
+  checkpoint: { id: string; seq: number; createdAt: string; anchor: AnchorStatusDTO };
+  entries: { id: string; seq: number; occurredAt: string; summary: Msg }[];
+};
+
 export type AnchorStatusDTO = {
   state: AnchorState;
   method: string | null;
