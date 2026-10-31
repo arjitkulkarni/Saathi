@@ -115,6 +115,9 @@ Each entry records the sources involved, the decision, the reason, and affected 
 ## D-026 xAI (Grok) is the default optional-AI provider
 - Decision: the optional explanation/OCR adapter (`packages/db/src/services/ai.ts`) defaults to `AI_PROVIDER=xai`, calling xAI's OpenAI-compatible `https://api.x.ai/v1/chat/completions` directly with `fetch` (no new SDK dependency). Anthropic is retained as an explicitly selected alternative; a failed xAI request is never retried on another provider.
 - Config: `XAI_API_KEY`, `AI_MODEL` (text), `AI_VISION_MODEL` (image). Models are operator-supplied and not hardcoded — model IDs change and not every Grok model accepts images, so availability is false until the operator sets verified IDs. The real key lives only in the git-ignored `.env` (or deployment secrets); it is never logged, returned, or placed in a `NEXT_PUBLIC_*` variable.
+- Structured output uses `response_format: { type: 'json_schema', json_schema: { name, schema, strict: true } }` and is re-validated with Zod. Vision input uses OpenAI-style `image_url` content with a base64 data URL. Verified against docs.x.ai: xAI accepts only **PNG/JPEG** images (max 20 MiB); WebP is stored but never sent — the user pastes the text instead.
+- Safety: no tools, web search, X search or URL fetching are enabled. The circuit breaker is scoped per provider+capability (text vs vision) and is process-local (web and worker keep independent breakers). OCR consent (sending the image) is distinct from the consent to send reviewed text for an explanation; Telegram submissions keep `externalProcessingConsent: false`.
+- Live verification is opt-in via `tools/xai-smoke.mjs` (spends a small amount of credits); not run in CI or automatically.
 - Verified on Neon:
   - Migrations and seed ran.
   - The app role sees 0 rows without tenant context and only its own organization with context.
