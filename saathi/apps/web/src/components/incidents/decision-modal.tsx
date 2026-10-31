@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Dialog } from 'radix-ui';
-import { AlertTriangle, ArrowLeft, ArrowRight, Eye } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
 import type { ScenarioOption, ScenarioPrompt } from '@saathi/domain';
 import type { ActionDetailDTO, Msg, Urgency } from '@saathi/contracts';
 import { Button, Card } from '@/components/ui/primitives';
@@ -18,9 +18,12 @@ type DecisionResult = { recorded: boolean; alreadyDecided: boolean; responseKey:
 
 const isRepair = (option: ScenarioOption) => ['device_action', 'device_action_combo', 'simulation_action'].includes(option.kind) && option.availability === 'available';
 
+// Short status words shown in sequence while a fix request is in flight, so the person
+// sees progress rather than a single frozen line (frontend spec: decision modal).
+const SUBMIT_STAGES = ['decisionModal.approving', 'decisionModal.repair.result.queued', 'decisionModal.repair.result.executing'];
+
 function optionHelpKey(option: ScenarioOption) {
   if (option.availability === 'unavailable') return 'decisionModal.statusUnavailable';
-  if (option.kind === 'simulation_action') return 'decisionModal.repair.simulationOnly';
   if (option.kind === 'review') return 'decisionModal.reviewHelp';
   if (option.kind === 'monitor') return 'decisionModal.monitorHelp';
   if (option.kind === 'manual') return 'decisionModal.statusManual';
@@ -126,7 +129,7 @@ function DecisionDialog({ activeId, remaining, onClose }: { activeId: string; re
               <><Dialog.Title className="sr-only">{t('decisionModal.title')}</Dialog.Title><p className="py-10 text-center text-[15px] text-ink-secondary" role="status">{t('common.loading')}</p></>
             )
           ) : result ? (
-            <ResultView result={result} onClose={closeAndAdvance} remaining={remaining} t={t} r={r} simulated={prompt.simulated} error={submitError} />
+            <ResultView result={result} onClose={closeAndAdvance} remaining={remaining} t={t} r={r} error={submitError} />
           ) : (
             <>
               <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
@@ -134,18 +137,14 @@ function DecisionDialog({ activeId, remaining, onClose }: { activeId: string; re
                   <AlertTriangle aria-hidden className="mt-1 size-6 shrink-0 text-warning-ink" />
                   {prompt.prompt.scenarioKey === 'generic' ? r(prompt.title) : t(`decisionModal.story.${prompt.prompt.scenarioKey}.title`)}
                 </Dialog.Title>
-                <StatusBadge className="shrink-0" tone={urgencyTone(prompt.urgency)} label={t(`status.urgency.${prompt.urgency}`)} />
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <StatusBadge tone={urgencyTone(prompt.urgency)} label={t(`status.urgency.${prompt.urgency}`)} />
+                  {prompt.simulated && <StatusBadge tone="warning" label={t('common.simulatedBadge')} />}
+                </div>
               </div>
-              {prompt.simulated && (
-                <span className="mt-2 inline-flex w-fit items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-1 text-[12px] font-semibold tracking-wide text-warning-ink">
-                  <Eye aria-hidden className="size-3.5" />
-                  {t('decisionModal.simulatedBadge')}
-                </span>
-              )}
               <p className="mt-2 text-[13px] text-ink-secondary">
                 <Time iso={prompt.observedAt} />
               </p>
-              {prompt.simulated && <p className="mt-2 text-[14px] text-ink-secondary">{t('decisionModal.simulatedNote')}</p>}
 
               {selected ? (
                 <OptionDetail option={selected} onBack={() => setSelected(null)} onSubmit={submit} submitting={submitting} error={submitError} t={t} r={r} onChooseRepair={() => setSelected(prompt.prompt.options.find(isRepair) ?? null)} hasRepair={prompt.prompt.options.some(isRepair)} />
@@ -226,6 +225,12 @@ function OptionDetail({
   const isDevice = isRepair(option);
   const isMonitor = option.kind === 'monitor';
   const guidanceOnly = option.kind === 'manual' || option.kind === 'review' || option.availability === 'unavailable';
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    if (!submitting) return;
+    const timers = SUBMIT_STAGES.map((_, i) => setTimeout(() => setStage(i), i * 900));
+    return () => timers.forEach(clearTimeout);
+  }, [submitting]);
   return (
     <div className="mt-4">
       <button type="button" disabled={submitting} onClick={onBack} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-brand-action-hover hover:underline focus-visible:outline-3 focus-visible:outline-focus">
@@ -277,6 +282,11 @@ function OptionDetail({
           </section>
         )}
         {isMonitor && <Notice tone="neutral" className="mt-3">{t('decisionModal.monitoringNote')}</Notice>}
+        {submitting && (
+          <p role="status" aria-live="polite" className="mt-4 text-[15px]">
+            {isDevice ? t(SUBMIT_STAGES[stage]) : t('decisionModal.acknowledging')}
+          </p>
+        )}
         {error && (
           <Notice tone="danger" className="mt-3" role="alert">
             {error} <Button size="sm" variant="secondary" className="ml-2" onClick={() => onSubmit(option.key)} disabled={submitting}>{t('decisionModal.retry')}</Button>
@@ -291,7 +301,7 @@ function OptionDetail({
                 ? t('decisionModal.approving')
                 : t('decisionModal.acknowledging')
               : isDevice
-                ? t(option.kind === 'simulation_action' ? 'decisionModal.repair.runPractice' : option.key === 'scan' ? 'decisionModal.repair.startCheck' : 'decisionModal.repair.fixNow')
+                ? t(option.key === 'scan' ? 'decisionModal.repair.startCheck' : 'decisionModal.repair.fixNow')
                 : t('decisionModal.confirmMonitoring')}
           </Button>
         )}
@@ -300,13 +310,12 @@ function OptionDetail({
   );
 }
 
-function ResultView({ result, onClose, remaining, t, r, simulated, error }: { result: DecisionResult; onClose: () => void; remaining: number; t: (k: string, p?: Record<string, unknown>) => string; r: (m: Msg) => string; simulated: boolean; error: string | null }) {
+function ResultView({ result, onClose, remaining, t, r, error }: { result: DecisionResult; onClose: () => void; remaining: number; t: (k: string, p?: Record<string, unknown>) => string; r: (m: Msg) => string; error: string | null }) {
   const partialFailure = result.actionResults.some((a) => a.error);
   const actionIds = [...new Set(result.actionResults.flatMap(a => a.actionId ? [a.actionId] : []))];
   return (
     <div>
       <Dialog.Title className="text-[20px] font-semibold">{t(result.simulationResult ? 'decisionModal.repair.practiceDone' : actionIds.length ? 'decisionModal.repair.progress' : 'decisionModal.recordedTitle')}</Dialog.Title>
-      {simulated && <p className="mt-2 font-medium text-warning-ink">{t('decisionModal.simulatedBadge')} · {t('decisionModal.repair.simulationOnly')}</p>}
       {result.simulationResult ? <Notice tone="success" className="mt-4">{r(result.simulationResult.outcome)}</Notice> : actionIds.length ? actionIds.map(id => <RepairActionStatus key={id} actionId={id} />) : <Notice tone="neutral" className="mt-3">{t('decisionModal.monitoringNote')}</Notice>}
       {partialFailure && <Notice tone="warning" className="mt-3">{t('decisionModal.partialResultNote')}</Notice>}
       {error && <Notice tone="danger" role="alert" className="mt-3">{error}</Notice>}
@@ -329,7 +338,7 @@ function RepairActionStatus({ actionId }: { actionId: string }) {
       {data.actionType === 'device.request_av_scan' && <p className="mt-2 text-[14px]">{t('decisionModal.repair.scanBoundary')}</p>}
       <details className="mt-3 text-[14px]"><summary className="cursor-pointer">{t('decisionModal.showDetails')}</summary><p className="mt-2">{r(data.outcome)}</p></details>
       {data.remainingFindings.length > 0 && <p className="mt-2 text-[14px] text-warning-ink">{t('decisionModal.repair.remaining')}</p>}
-      {data.device?.simulated && <p className="mt-2 text-[14px]">{t('decisionModal.repair.simulationOnly')}</p>}
+      {data.device?.simulated && <StatusBadge className="mt-2" tone="warning" label={t('common.simulatedBadge')} />}
     </> : <p>{t('decisionModal.repair.checking')}</p>}
     {error && <p role="alert" className="mt-2">{t('decisionModal.repair.statusUnknown')}</p>}
     <Button variant="secondary" className="mt-3" onClick={() => mutate()}>{t('action.checkStatus')}</Button>
