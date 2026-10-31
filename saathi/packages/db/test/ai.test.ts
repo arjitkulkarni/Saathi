@@ -63,3 +63,36 @@ describe('configuration and availability checks', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('xAI text explanation request', () => {
+  it('posts a json_schema structured request to the xAI endpoint with the bearer key and text model', async () => {
+    fetchMock.mockResolvedValueOnce(chatJson({ explanation: 'This looks like a prize scam.' }));
+    const out = await explainScam(xai(), scamInput);
+    expect(out).toEqual({ explanation: 'This looks like a prize scam.' });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${XAI_BASE_URL}/chat/completions`);
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer xai-test-key');
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe('grok-text');
+    expect(body.response_format).toMatchObject({ type: 'json_schema', json_schema: { name: 'scam_explanation', strict: true } });
+    expect(body.store).toBe(false);
+    // No tools / web search / x search are ever enabled.
+    expect(body.tools).toBeUndefined();
+  });
+  it('rejects output that violates the schema and falls back to null', async () => {
+    fetchMock.mockResolvedValueOnce(chatJson({ not_the_field: 'x' }));
+    expect(await explainScam(xai(), scamInput)).toBeNull();
+  });
+  it('returns null on a model refusal', async () => {
+    fetchMock.mockResolvedValueOnce(raw({ choices: [{ finish_reason: 'stop', message: { refusal: 'I cannot help.' } }] }));
+    expect(await explainScam(xai(), scamInput)).toBeNull();
+  });
+  it('returns null on truncated output (finish_reason length)', async () => {
+    fetchMock.mockResolvedValueOnce(chatJson({ explanation: 'partial' }, 'length'));
+    expect(await explainScam(xai(), scamInput)).toBeNull();
+  });
+  it('returns null on malformed JSON content', async () => {
+    fetchMock.mockResolvedValueOnce(raw({ choices: [{ finish_reason: 'stop', message: { content: '{ not json' } }] }));
+    expect(await explainScam(xai(), scamInput)).toBeNull();
+  });
+});
