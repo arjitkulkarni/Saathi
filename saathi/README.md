@@ -58,6 +58,8 @@ node scripts/generate-env.mjs   # writes .env: DB URLs from .local/db.env, fresh
 
 Without them the product says the feature is unavailable. It never fabricates success.
 
+The optional AI (Ask Saathi explanations, incident "Explain more", and screenshot text extraction) defaults to **xAI (Grok)** over its OpenAI-compatible endpoint. Set `XAI_API_KEY`, `AI_MODEL` (a current text model from [docs.x.ai/docs/models](https://docs.x.ai/docs/models)), and `AI_VISION_MODEL` (an image-capable model — not every Grok model accepts images; leave blank to disable OCR). xAI reads only PNG/JPEG screenshots; WebP is stored but not sent, and the user pastes the text instead. A deterministic verdict, findings and templates are always produced first; the model only explains them and can never change the verdict or take any action. To verify a live key (spends a small amount of credits): `node tools/xai-smoke.mjs`.
+
 `.env`, `.local/` and all generated keys are git-ignored. Private signing keys are used only by the worker.
 
 ## Migrate and seed
