@@ -46,7 +46,7 @@ All phases 00–18 are implemented. The remaining work is blocked externally (cr
 
 ## Remaining (blocked or needs people)
 
-- Live Telegram, Anthropic, S3 and Neon runs: credentials needed.
+- Live Anthropic, S3 and Neon runs: credentials needed.
 - Bitcoin attestation verification: needs `BITCOIN_VERIFIER=rpc` (or a reachable Esplora).
 - Mutating Windows adapters and the lock helper: needs an authorized disposable Windows VM.
 - Python OTS backend: needs Python.
@@ -61,3 +61,4 @@ All phases 00–18 are implemented. The remaining work is blocked externally (cr
 ## Deployment
 
 - 2026-10-31: corrected `APP_ORIGIN`/`BETTER_AUTH_URL` on Vercel to the actual deployed origin (previously mismatched, causing `INVALID_ORIGIN` on sign-up/sign-in); redeployed to verify.
+- 2026-10-31: live bot token obtained for `@v_saathi_bot`; `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_WEBHOOK_SECRET` set in both `saathi/.env` and the Vercel production env (https://saathi-woad.vercel.app/). This commit forces a redeploy so the production env picks them up; webhook registration against the production URL follows.
