@@ -218,3 +218,21 @@ function dispatchText<T extends z.ZodType>(cfg: AiConfig, schemaName: string, js
     ? anthropicParse(cfg, 'text', model, schema, system, body, maxTokens)
     : xaiParse(cfg, 'text', model, schemaName, jsonSchema, schema, system, body, maxTokens);
 }
+
+// --- Public operations ---------------------------------------------------------------------
+
+export async function explainIncident(cfg: AiConfig, input: { language: string; facts: string[]; uncertain: string[]; options: string[]; boundaries: string[] }) {
+  if (!aiAvailable(cfg)) return null;
+  const body = [
+    `Write in ${input.language}. Two or three short sentences, then up to four things the owner could check.`,
+    'Observed facts:',
+    ...input.facts.map((f) => `- ${f}`),
+    'Uncertain:',
+    ...input.uncertain.map((f) => `- ${f}`),
+    'Supported options (already decided by Saathi policy, do not add others):',
+    ...input.options.map((f) => `- ${f}`),
+    'Limits:',
+    ...input.boundaries.map((f) => `- ${f}`),
+  ].join('\n');
+  return dispatchText(cfg, 'incident_explanation', ExplanationJsonSchema, ExplanationSchema, BOUNDARY, body, 2000);
+}
