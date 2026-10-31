@@ -44,3 +44,22 @@ describe('aiConfigFromEnv provider mapping', () => {
     expect(aiConfigFromEnv({ XAI_API_KEY: 'k', AI_MODEL: 'm' }).provider).toBe('xai');
   });
 });
+
+describe('configuration and availability checks', () => {
+  it('reports text configured only when key and model are present', () => {
+    expect(aiConfigured(xai())).toBe(true);
+    expect(aiConfigured(aiConfigFromEnv({ AI_PROVIDER: 'xai', XAI_API_KEY: 'k' }))).toBe(false); // no model
+    expect(aiConfigured(aiConfigFromEnv({ AI_PROVIDER: 'xai', AI_MODEL: 'm' }))).toBe(false); // no key
+  });
+  it('requires an explicit vision model for xAI but reuses the text model for Anthropic', () => {
+    expect(aiVisionConfigured(xai())).toBe(true);
+    expect(aiVisionConfigured(aiConfigFromEnv({ AI_PROVIDER: 'xai', XAI_API_KEY: 'k', AI_MODEL: 'm' }))).toBe(false);
+    expect(aiVisionConfigured(aiConfigFromEnv({ AI_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'k', AI_MODEL: 'm' }))).toBe(true);
+  });
+  it('makes no request and returns null when not configured', async () => {
+    const cfg = aiConfigFromEnv({ AI_PROVIDER: 'xai' }, 1000); // no key/model
+    expect(aiAvailable(cfg)).toBe(false);
+    expect(await explainScam(cfg, scamInput)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
