@@ -326,3 +326,10 @@ export type MemberDTO = {
   isSelf: boolean;
   telegramLinked: boolean;
 };
+
+export type TelegramLinkDTO = {
+  code: string;
+  expiresAt: string;
+  /** Tap-to-open link that pre-fills /start <code> in the Telegram app tied to the organiser's phone number; null when TELEGRAM_BOT_USERNAME is not configured. */
+  deepLink: string | null;
+};

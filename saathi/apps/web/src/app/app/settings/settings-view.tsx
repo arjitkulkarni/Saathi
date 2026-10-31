@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { LOCALES, VOCABULARIES, ROLES, type Locale, type MemberDTO, type Role, type Vocabulary } from '@saathi/contracts';
+import { LOCALES, VOCABULARIES, ROLES, type Locale, type MemberDTO, type Role, type TelegramLinkDTO, type Vocabulary } from '@saathi/contracts';
 import { Button, Card, Hint, Input, Label, Select } from '@/components/ui/primitives';
 import { Notice } from '@/components/shared/states';
 import { CopyField } from '@/components/shared/client';
@@ -46,7 +46,7 @@ export function SettingsView({ role, org, policy, members, telegram }: { role: R
   const [invite, setInvite] = useState<{ email: string; role: Role }>({ email: '', role: 'staff' });
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   // Telegram
-  const [tgCode, setTgCode] = useState<string | null>(null);
+  const [tgLink, setTgLink] = useState<TelegramLinkDTO | null>(null);
   // Ops
   const [ops, setOps] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {
@@ -323,7 +323,7 @@ export function SettingsView({ role, org, policy, members, telegram }: { role: R
               size="sm"
               onClick={async () => {
                 try {
-                  setTgCode((await apiSend<{ code: string }>('/api/v1/telegram/link', 'POST')).code);
+                  setTgLink(await apiSend<TelegramLinkDTO>('/api/v1/telegram/link', 'POST'));
                 } catch (err) {
                   fail('alerts', err);
                 }
@@ -331,7 +331,18 @@ export function SettingsView({ role, org, policy, members, telegram }: { role: R
             >
               {t('settings.telegramLink')}
             </Button>
-            {tgCode && <p className="mt-3 font-mono text-[16px]">{t('settings.telegramCode', { code: tgCode })}</p>}
+            {tgLink && (
+              <div className="mt-3">
+                {tgLink.deepLink && (
+                  <Button asChild size="sm">
+                    <a href={tgLink.deepLink} target="_blank" rel="noopener noreferrer">
+                      {t('settings.telegramOpenLink')}
+                    </a>
+                  </Button>
+                )}
+                <p className="mt-2 font-mono text-[16px]">{t('settings.telegramCode', { code: tgLink.code })}</p>
+              </div>
+            )}
           </div>
         )}
         <Hint className="mt-3">{t('onboarding.notificationsBody')}</Hint>
