@@ -165,3 +165,19 @@ Results from the last run are in [docs/verification.md](docs/verification.md).
 - Rotate `BETTER_AUTH_SECRET`, `DEVICE_SECRET_ENCRYPTION_KEY` and the signing keys through your secret store. Publish only public keys (`*_PUBLIC_KEYS`).
 - Nothing personal or business-identifying is anchored. Only a randomized commitment root goes to OpenTimestamps.
 - Saathi has no token, chain or wallet.
+
+### Worker deployment (Railway)
+
+Vercel only hosts `apps/web`; it cannot run the persistent worker (`apps/worker`), which does
+detection, notifications, command/evidence signing and reports. Deploy it separately so Telegram
+alerts and background jobs run without anyone's laptop staying on. `saathi/railway.json` already
+pins the build/start commands; the rest is a one-time dashboard setup:
+
+1. Railway → New Project → Deploy from GitHub repo → this repo.
+2. In the service's Settings → Root Directory, set it to `saathi` (same as the Vercel project).
+3. Settings → Variables → paste every key from `saathi/.local/.env.worker-prod` (not committed —
+   it has the production Neon URLs, `APP_ORIGIN`, and the signing/Telegram secrets). Railway
+   injects these directly into the process; no `.env` file is needed on the host.
+4. Deploy. Watch the logs for `"worker starting"`; it should show `telegram: true`. From then on,
+   stop running `pnpm worker:prod` locally — two workers processing the same production jobs table
+   at once is harmless but redundant.
