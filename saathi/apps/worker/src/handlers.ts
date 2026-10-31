@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type pg from 'pg';
 import { msg, type Locale, type UnsignedCommand, type Vocabulary } from '@saathi/contracts';
-import type { WorkerEnv } from '@saathi/contracts/env';
+import { aiConfigFromEnv, type WorkerEnv } from '@saathi/contracts/env';
 import {
   aiAvailable,
   buildBatch,
@@ -175,7 +175,7 @@ export function buildHandlers(d: WorkerDeps): Record<string, Handler> {
 
     'scam.explain': async (job) => {
       const orgId = need(job.orgId);
-      const cfg = { apiKey: d.env.ANTHROPIC_API_KEY, model: d.env.AI_MODEL };
+      const cfg = aiConfigFromEnv(d.env);
       const org = await orgInfo(d.pool, orgId);
       const ro = { locale: (org?.locale as Locale) ?? 'en', vocabulary: (org?.vocabulary as Vocabulary) ?? 'generic', timezone: org?.timezone ?? 'UTC' };
       const row = await tx(orgId, async (db) => (await db.select().from(s.scamChecks).where(and(eq(s.scamChecks.orgId, orgId), eq(s.scamChecks.id, String(job.payload.scamCheckId)))))[0]);
