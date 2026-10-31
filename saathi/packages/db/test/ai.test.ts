@@ -29,3 +29,18 @@ afterEach(() => {
 });
 
 const scamInput = { language: 'English', text: 'win a prize click here', verdictLabel: 'Suspicious', reasons: ['urgent money request'], uncertainty: ['sender unknown'] };
+
+describe('aiConfigFromEnv provider mapping', () => {
+  it('selects the xAI key and official base URL for the xai provider', () => {
+    const cfg = aiConfigFromEnv({ AI_PROVIDER: 'xai', XAI_API_KEY: 'k1', ANTHROPIC_API_KEY: 'k2', AI_MODEL: 'm', AI_VISION_MODEL: 'v' });
+    expect(cfg).toMatchObject({ provider: 'xai', apiKey: 'k1', model: 'm', visionModel: 'v', baseUrl: XAI_BASE_URL });
+  });
+  it('selects the Anthropic key for the anthropic provider and never the xAI key', () => {
+    const cfg = aiConfigFromEnv({ AI_PROVIDER: 'anthropic', XAI_API_KEY: 'k1', ANTHROPIC_API_KEY: 'k2', AI_MODEL: 'm' });
+    expect(cfg.apiKey).toBe('k2');
+    expect(cfg.baseUrl).toBeUndefined();
+  });
+  it('defaults to xai when no provider is set', () => {
+    expect(aiConfigFromEnv({ XAI_API_KEY: 'k', AI_MODEL: 'm' }).provider).toBe('xai');
+  });
+});
