@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { SaathiError } from '@saathi/contracts';
 import { can } from '@saathi/domain';
-import { aiVisionAvailable, aiVisionConfigured, aiVisionSupportsFormat, extractTextFromImage } from '@saathi/db';
+import { aiVisionAvailable, aiVisionConfigured, aiVisionSupportsFormat, extractTextFromImage, schema } from '@saathi/db';
+import { actorTx } from '@/server/actor';
 import { userRoute } from '@/server/api';
 import { objectStore } from '@/server/db';
 import { aiConfig } from '@/server/env';
@@ -54,6 +55,6 @@ export const POST = userRoute(async ({ req, ctx }) => {
   if (!aiVisionSupportsFormat(cfg, info.type)) return { ...base, extraction: 'unsupported_format' as const };
   // Configured but currently backed off by the breaker.
   if (!aiVisionAvailable(cfg)) return { ...base, extraction: 'unavailable' as const };
-  const r = await extractTextFromImage(cfg, { data: buf, mediaType: info.type });
+  const r = await extractTextFromImage(cfg, { data: buf, mediaType: info.type }, (rec) => void actorTx(ctx, (db) => db.insert(schema.aiCallLog).values({ orgId: ctx.actor.orgId, ...rec })).catch(() => {}));
   return { attachmentRef: ref, text: r?.text ?? null, legible: r?.legible ?? null, extraction: r ? ('done' as const) : ('failed' as const) };
 });
