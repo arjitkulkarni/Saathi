@@ -88,6 +88,32 @@ export function parseEnv<T extends z.ZodType>(schema: T, source: Record<string, 
   return r.data;
 }
 
+// Optional AI provider configuration, mapped once from the environment so route handlers and
+// the worker never re-derive the credential/model mapping. The real key is never logged.
+export type AiProvider = 'xai' | 'anthropic';
+export type AiConfig = {
+  provider: AiProvider;
+  apiKey?: string;
+  /** Model used for text explanations. */
+  model?: string;
+  /** Model used for screenshot text extraction (vision). Not assumed equal to the text model. */
+  visionModel?: string;
+  /** OpenAI-compatible base URL; defaults to the official xAI endpoint for the xai provider. */
+  baseUrl?: string;
+  timeoutMs?: number;
+};
+
+type AiEnvFields = {
+  AI_PROVIDER?: AiProvider;
+  XAI_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
+  AI_MODEL?: string;
+  AI_VISION_MODEL?: string;
+};
+
+/** The default OpenAI-compatible endpoint for xAI (https://docs.x.ai). */
+export const XAI_BASE_URL = 'https://api.x.ai/v1';
+
 /** Pinned public key registry encoded as JSON: [{"keyId":"...","publicKeyHex":"..."}] */
 export const PublicKeyRegistry = z.array(
   z.object({ keyId: z.string(), publicKeyHex: z.string().regex(/^[0-9a-f]{64}$/), validFrom: z.string().optional(), retiredAt: z.string().optional() }),
