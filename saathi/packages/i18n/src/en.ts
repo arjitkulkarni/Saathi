@@ -197,6 +197,7 @@ export const en = {
     failed: 'Email or password is incorrect.',
     rateLimited: 'Too many sign-in attempts. Wait a minute and try again.',
     signupFailed: 'We could not create the account. The email may already be registered.',
+    signupError: 'We could not create the account. Please check your details and try again.',
     recovery: 'Forgot your password? Ask your organization owner to reset access. Owners use their recovery identity.',
     inviteTitle: 'You have been invited',
     inviteBody: 'Sign in or create an account with the invited email address to join.',

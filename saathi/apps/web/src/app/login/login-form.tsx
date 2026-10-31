@@ -7,6 +7,14 @@ import { apiSend } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { useI18n } from '@/lib/i18n-client';
 
+/** better-auth reports a duplicate email via this code; fall back to the stable message text
+ * in case the client surfaces only one of the two. Any other error must not be reported as
+ * "email already registered" — that was previously shown for every sign-up failure. */
+function emailAlreadyExists(error: { code?: string; message?: string }) {
+  if (error.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL' || error.code === 'USER_ALREADY_EXISTS') return true;
+  return !!error.message?.toLowerCase().includes('already exist');
+}
+
 export function LoginForm({ next, invite, reauth }: { next: string | null; invite: string | null; reauth: boolean }) {
   const { t } = useI18n();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -24,14 +32,16 @@ export function LoginForm({ next, invite, reauth }: { next: string | null; invit
     try {
       const r = mode === 'signin' ? await authClient.signIn.email({ email, password }) : await authClient.signUp.email({ email, password, name: String(f.get('name') ?? '').trim() || email });
       if (r.error) {
-        // A rate-limited request is not a wrong password; say so.
-        setError(r.error.status === 429 ? t('auth.rateLimited') : mode === 'signin' ? t('auth.failed') : t('auth.signupFailed'));
+        // A rate-limited request is not a wrong password; say so. For sign-up, only claim the
+        // email is taken when the server actually said so — any other failure (validation,
+        // network, misconfiguration) gets a message that doesn't misdirect the user.
+        setError(r.error.status === 429 ? t('auth.rateLimited') : mode === 'signin' ? t('auth.failed') : emailAlreadyExists(r.error) ? t('auth.signupFailed') : t('auth.signupError'));
         return;
       }
       if (invite) await apiSend('/api/v1/invitations/accept', 'POST', { token: invite });
       window.location.assign(next ?? '/app');
     } catch {
-      setError(mode === 'signin' ? t('auth.failed') : t('auth.signupFailed'));
+      setError(mode === 'signin' ? t('auth.failed') : t('auth.signupError'));
     } finally {
       setBusy(false);
     }
