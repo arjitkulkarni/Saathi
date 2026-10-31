@@ -8,6 +8,7 @@ import { Button, Card, buttonVariants } from '@/components/ui/primitives';
 import { KeyValue, Notice, TechnicalDetails } from '@/components/shared/states';
 import { CopyField } from '@/components/shared/client';
 import { IntegrityCard, TimestampCard } from '@/components/evidence/status-cards';
+import { ChainGraph } from '@/components/evidence/chain-graph';
 import { ApiError, apiSend, usePolling } from '@/lib/api';
 import { useI18n } from '@/lib/i18n-client';
 
@@ -78,6 +79,9 @@ export function CheckpointView({ initial }: { initial: Detail }) {
             {t('evidence.retryTimestamp')}
           </Button>
         )}
+      </div>
+      <div className="mt-6">
+        <ChainGraph checkpointId={c.id} />
       </div>
       <Card className="mt-6">
         <h2 className="text-[16px] font-semibold">{t('evidence.whatItProves')}</h2>
