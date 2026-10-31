@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { SaathiError } from '@saathi/contracts';
 import { can } from '@saathi/domain';
-import { aiAvailable, extractTextFromImage } from '@saathi/db';
+import { aiVisionAvailable, aiVisionConfigured, aiVisionSupportsFormat, extractTextFromImage } from '@saathi/db';
 import { userRoute } from '@/server/api';
 import { objectStore } from '@/server/db';
-import { env } from '@/server/env';
+import { aiConfig } from '@/server/env';
 
 const MAX_BYTES = 3 * 1024 * 1024;
 
@@ -26,9 +26,11 @@ function sniff(b: Buffer): { type: 'image/png' | 'image/jpeg' | 'image/webp'; wi
 }
 
 /**
- * Store a screenshot privately and, only with explicit consent, extract its text through the
- * optional AI adapter. The extracted text is returned for review/redaction; nothing is
- * assessed until the user submits the reviewed text.
+ * Store a screenshot privately and, only with explicit consent to send the image to the
+ * external AI, extract its text through the optional vision adapter. The extracted text is
+ * returned for review/redaction; nothing is assessed until the user submits the reviewed text.
+ * The image is never transmitted without `consent`, which is distinct from the consent to send
+ * reviewed text for an explanation (handled at submit time).
  */
 export const POST = userRoute(async ({ req, ctx }) => {
   if (!can(ctx.actor.role, 'scam.submit')) throw new SaathiError('FORBIDDEN', 'You cannot submit messages.');
@@ -43,9 +45,15 @@ export const POST = userRoute(async ({ req, ctx }) => {
   if (info.width > 8000 || info.height > 8000) throw new SaathiError('VALIDATION_FAILED', 'The image dimensions are too large.');
   const ref = `scam/${ctx.actor.orgId}/${randomUUID()}`;
   await objectStore().put(ref, buf, info.type);
-  const e = env();
-  const cfg = { apiKey: e.ANTHROPIC_API_KEY, model: e.AI_MODEL, timeoutMs: 25_000 };
-  if (!consent || !aiAvailable(cfg)) return { attachmentRef: ref, text: null, legible: null, extraction: consent ? 'unavailable' : 'not_requested' };
+  const base = { attachmentRef: ref, text: null, legible: null };
+  const cfg = aiConfig(25_000);
+  // No image transmission without explicit OCR consent.
+  if (!consent) return { ...base, extraction: 'not_requested' as const };
+  if (!aiVisionConfigured(cfg)) return { ...base, extraction: 'unavailable' as const };
+  // The provider cannot read this format (e.g. WebP on xAI): keep the stored image, ask for pasted text.
+  if (!aiVisionSupportsFormat(cfg, info.type)) return { ...base, extraction: 'unsupported_format' as const };
+  // Configured but currently backed off by the breaker.
+  if (!aiVisionAvailable(cfg)) return { ...base, extraction: 'unavailable' as const };
   const r = await extractTextFromImage(cfg, { data: buf, mediaType: info.type });
-  return { attachmentRef: ref, text: r?.text ?? null, legible: r?.legible ?? null, extraction: r ? 'done' : 'failed' };
+  return { attachmentRef: ref, text: r?.text ?? null, legible: r?.legible ?? null, extraction: r ? ('done' as const) : ('failed' as const) };
 });
