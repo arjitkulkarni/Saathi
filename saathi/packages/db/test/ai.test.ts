@@ -96,3 +96,32 @@ describe('xAI text explanation request', () => {
     expect(await explainScam(xai(), scamInput)).toBeNull();
   });
 });
+
+describe('transient failures, retries and circuit breaker', () => {
+  it('retries once on 429 and succeeds', async () => {
+    fetchMock.mockResolvedValueOnce(status(429)).mockResolvedValueOnce(chatJson({ explanation: 'ok' }));
+    expect(await explainScam(xai(), scamInput)).toEqual({ explanation: 'ok' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it('retries once on a network error and then gives up', async () => {
+    fetchMock.mockRejectedValue(new Error('network'));
+    expect(await explainScam(xai(), scamInput)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it('does not retry on a 4xx (e.g. unsupported model) and records a failure', async () => {
+    fetchMock.mockResolvedValueOnce(status(400));
+    expect(await explainScam(xai(), scamInput)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('opens the text breaker after three failures without disabling vision', async () => {
+    fetchMock.mockResolvedValue(status(400));
+    const cfg = xai();
+    for (let i = 0; i < 3; i++) await explainScam(cfg, scamInput);
+    expect(aiAvailable(cfg)).toBe(false); // text backed off
+    expect(aiVisionAvailable(cfg)).toBe(true); // vision unaffected
+    fetchMock.mockClear();
+    // No further text requests are attempted while the breaker is open.
+    expect(await explainScam(cfg, scamInput)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
