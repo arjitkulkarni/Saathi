@@ -104,7 +104,20 @@ export function __resetAiState() {
   breaker.clear();
 }
 
+// --- Audit ----------------------------------------------------------------------------------
+// Callers may record that a call happened and how it resolved. Never pass the prompt or the
+// model's output here — this hook exists so the audit trail cannot leak the data it is auditing.
+
+export type AiOutcome = 'success' | 'network_error' | 'http_error' | 'refused' | 'truncated' | 'malformed_json' | 'schema_invalid';
+export type AiAuditRecord = { operation: string; capability: Capability; provider: string; model: string; outcome: AiOutcome; latencyMs: number };
+export type AiAuditHook = (rec: AiAuditRecord) => void;
+
 // --- Provider calls ------------------------------------------------------------------------
+
+// Hardcap on how many times a single logical AI call may loop (initial attempt plus retries).
+// Bounded low on purpose: this is explanation/OCR only, never worth chasing a flaky provider
+// past a couple of tries — the deterministic template takes over past this cap regardless.
+const MAX_LLM_ATTEMPTS = 3;
 
 type XaiContent = string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
 
@@ -118,7 +131,11 @@ async function xaiParse<T extends z.ZodType>(
   system: string,
   userContent: XaiContent,
   maxTokens: number,
+  operation: string,
+  onAudit?: AiAuditHook,
 ): Promise<z.infer<T> | null> {
+  const started = Date.now();
+  const audit = (outcome: AiOutcome) => onAudit?.({ operation, capability: cap, provider: cfg.provider, model, outcome, latencyMs: Date.now() - started });
   const url = `${cfg.baseUrl ?? XAI_BASE_URL}/chat/completions`;
   const body = JSON.stringify({
     model,
@@ -131,8 +148,9 @@ async function xaiParse<T extends z.ZodType>(
     response_format: { type: 'json_schema', json_schema: { name: schemaName, schema: jsonSchema, strict: true } },
     store: false, // do not retain the request/response server-side
   });
-  // One retry on transient failures (timeout, network, 429, 5xx); none on 4xx.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Retries on transient failures (timeout, network, 429, 5xx) only, capped at MAX_LLM_ATTEMPTS
+  // total attempts; none on 4xx.
+  for (let attempt = 0; attempt < MAX_LLM_ATTEMPTS; attempt++) {
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -141,13 +159,15 @@ async function xaiParse<T extends z.ZodType>(
         signal: AbortSignal.timeout(cfg.timeoutMs ?? 20_000),
       });
       if (res.status === 429 || res.status >= 500) {
-        if (attempt === 0) continue;
+        if (attempt < MAX_LLM_ATTEMPTS - 1) continue;
         recordOutcome(cfg.provider, cap, false);
+        audit('http_error');
         return null;
       }
       if (!res.ok) {
         // 4xx: bad model, unsupported capability, or auth — not retried.
         recordOutcome(cfg.provider, cap, false);
+        audit('http_error');
         return null;
       }
       const data = (await res.json().catch(() => null)) as { choices?: { finish_reason?: string; message?: { content?: unknown; refusal?: unknown } }[] } | null;
@@ -155,12 +175,14 @@ async function xaiParse<T extends z.ZodType>(
       const message = choice?.message;
       if (!message || choice?.finish_reason === 'length' || message.refusal) {
         recordOutcome(cfg.provider, cap, false); // refusal, truncation or empty choice
+        audit(message?.refusal ? 'refused' : 'truncated');
         return null;
       }
       const content = message.content;
       const raw = typeof content === 'string' ? content : Array.isArray(content) ? content.map((p) => (p as { text?: string })?.text ?? '').join('') : '';
       if (!raw.trim()) {
         recordOutcome(cfg.provider, cap, false);
+        audit('truncated');
         return null;
       }
       let parsed: unknown;
@@ -168,14 +190,17 @@ async function xaiParse<T extends z.ZodType>(
         parsed = JSON.parse(raw);
       } catch {
         recordOutcome(cfg.provider, cap, false); // malformed JSON
+        audit('malformed_json');
         return null;
       }
       const checked = schema.safeParse(parsed);
       recordOutcome(cfg.provider, cap, checked.success); // schema violation counts as failure
+      audit(checked.success ? 'success' : 'schema_invalid');
       return checked.success ? checked.data : null;
     } catch {
-      if (attempt === 0) continue; // timeout / network error
+      if (attempt < MAX_LLM_ATTEMPTS - 1) continue; // timeout / network error
       recordOutcome(cfg.provider, cap, false);
+      audit('network_error');
       return null;
     }
   }
@@ -190,9 +215,14 @@ async function anthropicParse<T extends z.ZodType>(
   system: string,
   content: Anthropic.MessageParam['content'],
   maxTokens: number,
+  operation: string,
+  onAudit?: AiAuditHook,
 ): Promise<z.infer<T> | null> {
+  const started = Date.now();
+  const audit = (outcome: AiOutcome) => onAudit?.({ operation, capability: cap, provider: cfg.provider, model, outcome, latencyMs: Date.now() - started });
   try {
-    const response = await new Anthropic({ apiKey: cfg.apiKey, timeout: cfg.timeoutMs ?? 20_000, maxRetries: 1 }).messages.parse({
+    // maxRetries excludes the initial attempt, so this also caps at MAX_LLM_ATTEMPTS total.
+    const response = await new Anthropic({ apiKey: cfg.apiKey, timeout: cfg.timeoutMs ?? 20_000, maxRetries: MAX_LLM_ATTEMPTS - 1 }).messages.parse({
       model,
       max_tokens: maxTokens,
       system,
@@ -201,27 +231,30 @@ async function anthropicParse<T extends z.ZodType>(
     });
     if (response.stop_reason === 'refusal' || !response.parsed_output) {
       recordOutcome(cfg.provider, cap, false);
+      audit(response.stop_reason === 'refusal' ? 'refused' : 'truncated');
       return null;
     }
     const checked = schema.safeParse(response.parsed_output);
     recordOutcome(cfg.provider, cap, checked.success);
+    audit(checked.success ? 'success' : 'schema_invalid');
     return checked.success ? checked.data : null;
   } catch {
     recordOutcome(cfg.provider, cap, false);
+    audit('network_error');
     return null;
   }
 }
 
-function dispatchText<T extends z.ZodType>(cfg: AiConfig, schemaName: string, jsonSchema: unknown, schema: T, system: string, body: string, maxTokens: number): Promise<z.infer<T> | null> {
+function dispatchText<T extends z.ZodType>(cfg: AiConfig, operation: string, jsonSchema: unknown, schema: T, system: string, body: string, maxTokens: number, onAudit?: AiAuditHook): Promise<z.infer<T> | null> {
   const model = textModel(cfg)!;
   return cfg.provider === 'anthropic'
-    ? anthropicParse(cfg, 'text', model, schema, system, body, maxTokens)
-    : xaiParse(cfg, 'text', model, schemaName, jsonSchema, schema, system, body, maxTokens);
+    ? anthropicParse(cfg, 'text', model, schema, system, body, maxTokens, operation, onAudit)
+    : xaiParse(cfg, 'text', model, operation, jsonSchema, schema, system, body, maxTokens, operation, onAudit);
 }
 
 // --- Public operations ---------------------------------------------------------------------
 
-export async function explainIncident(cfg: AiConfig, input: { language: string; facts: string[]; uncertain: string[]; options: string[]; boundaries: string[] }) {
+export async function explainIncident(cfg: AiConfig, input: { language: string; facts: string[]; uncertain: string[]; options: string[]; boundaries: string[] }, onAudit?: AiAuditHook) {
   if (!aiAvailable(cfg)) return null;
   const body = [
     `Write in ${input.language}. Two or three short sentences, then up to four things the owner could check.`,
@@ -234,10 +267,10 @@ export async function explainIncident(cfg: AiConfig, input: { language: string; 
     'Limits:',
     ...input.boundaries.map((f) => `- ${f}`),
   ].join('\n');
-  return dispatchText(cfg, 'incident_explanation', ExplanationJsonSchema, ExplanationSchema, BOUNDARY, body, 2000);
+  return dispatchText(cfg, 'incident_explanation', ExplanationJsonSchema, ExplanationSchema, BOUNDARY, body, 2000, onAudit);
 }
 
-export async function explainScam(cfg: AiConfig, input: { language: string; text: string; verdictLabel: string; reasons: string[]; uncertainty: string[] }) {
+export async function explainScam(cfg: AiConfig, input: { language: string; text: string; verdictLabel: string; reasons: string[]; uncertainty: string[] }, onAudit?: AiAuditHook) {
   if (!aiAvailable(cfg)) return null;
   const body = [
     `Write in ${input.language}. Explain in at most four sentences why these findings matter. Keep the stated verdict "${input.verdictLabel}"; never upgrade it to safe or downgrade uncertainty.`,
@@ -249,11 +282,11 @@ export async function explainScam(cfg: AiConfig, input: { language: string; text
     input.text.slice(0, 4000),
     '</untrusted_content>',
   ].join('\n');
-  return dispatchText(cfg, 'scam_explanation', ScamExplanationJsonSchema, ScamExplanationSchema, BOUNDARY, body, 1500);
+  return dispatchText(cfg, 'scam_explanation', ScamExplanationJsonSchema, ScamExplanationSchema, BOUNDARY, body, 1500, onAudit);
 }
 
 /** Text extraction from a screenshot the user explicitly chose to send for processing. */
-export async function extractTextFromImage(cfg: AiConfig, image: { data: Buffer; mediaType: 'image/png' | 'image/jpeg' | 'image/webp' }) {
+export async function extractTextFromImage(cfg: AiConfig, image: { data: Buffer; mediaType: 'image/png' | 'image/jpeg' | 'image/webp' }, onAudit?: AiAuditHook) {
   if (!aiVisionAvailable(cfg)) return null;
   const model = visionModel(cfg)!;
   if (cfg.provider === 'anthropic') {
@@ -268,6 +301,8 @@ export async function extractTextFromImage(cfg: AiConfig, image: { data: Buffer;
         { type: 'text', text: 'Transcribe the message text in this screenshot.' },
       ],
       4000,
+      'screenshot_text',
+      onAudit,
     );
   }
   // xAI accepts only PNG/JPEG; unsupported formats must be rejected by the caller, but guard here too.
@@ -286,6 +321,8 @@ export async function extractTextFromImage(cfg: AiConfig, image: { data: Buffer;
       { type: 'text', text: 'Transcribe the message text in this screenshot.' },
     ],
     4000,
+    'screenshot_text',
+    onAudit,
   );
 }
 
