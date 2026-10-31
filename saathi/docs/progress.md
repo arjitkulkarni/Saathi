@@ -57,3 +57,7 @@ All phases 00–18 are implemented. The remaining work is blocked externally (cr
   - Slow network and offline browser.
   - Lost approval response.
   - Firefox and WebKit.
+
+## Deployment
+
+- 2026-10-31: corrected `APP_ORIGIN`/`BETTER_AUTH_URL` on Vercel to the actual deployed origin (previously mismatched, causing `INVALID_ORIGIN` on sign-up/sign-in); redeployed to verify.
