@@ -8,7 +8,7 @@ import { cn } from '@/lib/cn';
 
 export type Tone = 'success' | 'warning' | 'danger' | 'neutral' | 'info';
 
-const TONE: Record<Tone, string> = {
+export const TONE: Record<Tone, string> = {
   success: 'bg-success-soft text-success-ink border-success-ink/20',
   warning: 'bg-warning-soft text-warning-ink border-warning-ink/20',
   danger: 'bg-danger-soft text-danger-ink border-danger-ink/20',

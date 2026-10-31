@@ -815,6 +815,15 @@ export const en = {
     proves: 'Consistency with the signed and timestamped commitment.',
     doesNotProve: 'It does not prove the observations were true or complete, the exact incident time, that a threat was stopped, or legal compliance.',
     entries: 'Entries',
+    ledgerGraph: {
+      title: 'Ledger risk at a glance',
+      intro: "Each dot is a checkpoint in your evidence ledger, oldest to newest. The line between two dots is the hash link between them — change anything earlier and that link would no longer match. A dot's color shows whether that checkpoint's independent timestamp has been confirmed.",
+      legendConfirmed: 'Confirmed',
+      legendPending: 'Pending confirmation',
+      legendRetrying: 'Retrying',
+      legendFailed: 'Failed or invalid',
+      legendNotRequested: 'Not requested',
+    },
     graph: {
       view: 'View as a chain',
       title: 'How this checkpoint was built',

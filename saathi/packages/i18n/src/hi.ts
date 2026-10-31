@@ -821,6 +821,15 @@ const catalogue: Strings<Messages> = {
     proves: 'हस्ताक्षरित और टाइमस्टैम्प की गई प्रतिबद्धता से मेल।',
     doesNotProve: 'यह साबित नहीं करता कि अवलोकन सच या पूरे थे, घटना का सटीक समय, कि ख़तरा रोका गया, या क़ानूनी अनुपालन।',
     entries: 'प्रविष्टियाँ',
+    ledgerGraph: {
+      title: 'Ledger risk at a glance',
+      intro: "Each dot is a checkpoint in your evidence ledger, oldest to newest. The line between two dots is the hash link between them — change anything earlier and that link would no longer match. A dot's color shows whether that checkpoint's independent timestamp has been confirmed.",
+      legendConfirmed: 'Confirmed',
+      legendPending: 'Pending confirmation',
+      legendRetrying: 'Retrying',
+      legendFailed: 'Failed or invalid',
+      legendNotRequested: 'Not requested',
+    },
     graph: {
       view: 'View as a chain',
       title: 'How this checkpoint was built',

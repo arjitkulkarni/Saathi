@@ -820,6 +820,15 @@ export const kn = {
     proves: 'ಸಹಿ ಮಾಡಿದ ಮತ್ತು ಸಮಯಮುದ್ರೆ ಹಾಕಿದ ಬದ್ಧತೆಯೊಂದಿಗೆ ಹೊಂದಾಣಿಕೆ.',
     doesNotProve: 'ಗಮನಿಕೆಗಳು ಸತ್ಯ ಅಥವಾ ಸಂಪೂರ್ಣ, ಘಟನೆಯ ನಿಖರ ಸಮಯ, ಬೆದರಿಕೆ ನಿಂತಿತು, ಅಥವಾ ಕಾನೂನು ಅನುಸರಣೆ — ಇವುಗಳಲ್ಲಿ ಯಾವುದನ್ನೂ ಇದು ಸಾಬೀತುಪಡಿಸುವುದಿಲ್ಲ.',
     entries: 'ನಮೂದುಗಳು',
+    ledgerGraph: {
+      title: 'Ledger risk at a glance',
+      intro: "Each dot is a checkpoint in your evidence ledger, oldest to newest. The line between two dots is the hash link between them — change anything earlier and that link would no longer match. A dot's color shows whether that checkpoint's independent timestamp has been confirmed.",
+      legendConfirmed: 'Confirmed',
+      legendPending: 'Pending confirmation',
+      legendRetrying: 'Retrying',
+      legendFailed: 'Failed or invalid',
+      legendNotRequested: 'Not requested',
+    },
     graph: {
       view: 'View as a chain',
       title: 'How this checkpoint was built',

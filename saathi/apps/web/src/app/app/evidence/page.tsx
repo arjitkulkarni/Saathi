@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ChevronRight, FileCheck2 } from 'lucide-react';
 import { listCheckpoints } from '@saathi/db';
+import { LedgerRiskGraph } from '@/components/evidence/ledger-risk-graph';
 import { EmptyState, Notice, PageHeader, StateScreen } from '@/components/shared/states';
 import { StatusBadge, anchorTone } from '@/components/shared/status';
 import { load } from '@/server/actor';
@@ -36,6 +37,8 @@ export default async function EvidencePage() {
       {items.length === 0 ? (
         <EmptyState icon={<FileCheck2 className="size-8" />} title={t('evidence.empty')} />
       ) : (
+        <>
+        <LedgerRiskGraph items={items} t={t} />
         <div className="overflow-hidden rounded-[16px] border border-border-subtle bg-surface">
           <ul className="divide-y divide-border-subtle">
             {items.map((c) => (
@@ -59,6 +62,7 @@ export default async function EvidencePage() {
             ))}
           </ul>
         </div>
+        </>
       )}
     </>
   );
