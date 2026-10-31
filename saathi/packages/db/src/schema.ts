@@ -820,6 +820,25 @@ export const campaignReports = pgTable(
   (t) => [uniqueIndex('campaign_reports_open_uq').on(t.orgId, t.campaignKey).where(sql`status = 'open'`)],
 );
 
+// Audit trail for optional AI assistance (build.md Ph13). Records that a call happened and
+// how it resolved, never the prompt or the model's output, so the log itself cannot leak the
+// facts or message text that were sent.
+export const aiCallLog = pgTable(
+  'ai_call_log',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    orgId: orgId(),
+    operation: text('operation').notNull(),
+    capability: text('capability').notNull(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    outcome: text('outcome').notNull(),
+    latencyMs: integer('latency_ms').notNull(),
+    at: ts('at').notNull().defaultNow(),
+  },
+  (t) => [index('ai_call_log_org_at_idx').on(t.orgId, t.at)],
+);
+
 // ------------------------------------------------------------------ Evidence and anchoring
 
 export const evidenceChainHeads = pgTable('evidence_chain_heads', {
