@@ -34,8 +34,11 @@ export const WebEnv = CommonEnv.extend({
   OBJECT_STORAGE_ENDPOINT: optional,
   OBJECT_STORAGE_ACCESS_KEY_ID: optional,
   OBJECT_STORAGE_SECRET_ACCESS_KEY: optional,
+  AI_PROVIDER: z.enum(['xai', 'anthropic']).default('xai'),
+  XAI_API_KEY: optional,
   ANTHROPIC_API_KEY: optional,
   AI_MODEL: optional,
+  AI_VISION_MODEL: optional,
 });
 export type WebEnv = z.infer<typeof WebEnv>;
 
