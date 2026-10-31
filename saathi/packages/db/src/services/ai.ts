@@ -50,3 +50,31 @@ const OCR_SYSTEM =
 
 // Image formats the xAI vision endpoint accepts (https://docs.x.ai image understanding).
 const XAI_IMAGE_TYPES = new Set(['image/png', 'image/jpeg']);
+
+// --- Capability resolution ----------------------------------------------------------------
+
+type Capability = 'text' | 'vision';
+
+function textModel(cfg: AiConfig) {
+  return cfg.model;
+}
+/** xAI requires an explicit vision model (not every Grok model accepts images); Anthropic reuses its one model. */
+function visionModel(cfg: AiConfig) {
+  return cfg.visionModel ?? (cfg.provider === 'anthropic' ? cfg.model : undefined);
+}
+
+/** Configured means credentials and a model are present — a pure check with no network call. */
+export function aiConfigured(cfg: AiConfig) {
+  return !!cfg.apiKey && !!textModel(cfg);
+}
+export function aiVisionConfigured(cfg: AiConfig) {
+  return !!cfg.apiKey && !!visionModel(cfg);
+}
+/** Available means configured and not currently backed off by the process-local breaker. */
+export function aiAvailable(cfg: AiConfig) {
+  return aiConfigured(cfg) && breakerAllows(cfg.provider, 'text');
+}
+export function aiVisionAvailable(cfg: AiConfig) {
+  return aiVisionConfigured(cfg) && breakerAllows(cfg.provider, 'vision');
+}
+
